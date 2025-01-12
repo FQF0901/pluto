@@ -47,10 +47,13 @@ Preprocess the dataset to accelerate training. It is recommended to run a small 
  python run_training.py \
     py_func=cache +training=train_pluto \
     scenario_builder=nuplan_mini \
-    cache.cache_path=/nuplan/exp/sanity_check \
+    cache.cache_path=/nuplan/exp/sanity_check \ # 【本代码产物存放地址：/home/fqf/nuplan/exp/sanity_check】
     cache.cleanup_cache=true \
     scenario_filter=training_scenarios_tiny \
     worker=sequential
+
+【正确应该：】
+python run_training.py py_func=cache +training=train_pluto scenario_builder=nuplan cache.cache_path=/home/fqf/nuplan/exp/sanity_check cache.cleanup_cache=true scenario_filter=training_scenarios_tiny worker=sequential
 ```
 
 Then preprocess the whole nuPlan training set (this will take some time). You may need to change `cache.cache_path` to suit your condition
@@ -79,6 +82,9 @@ CUDA_VISIBLE_DEVICES=0 python run_training.py \
   worker=single_machine_thread_pool worker.max_workers=4 \
   scenario_builder=nuplan cache.cache_path=/nuplan/exp/sanity_check cache.use_cache_without_dataset=true \
   data_loader.params.batch_size=4 data_loader.params.num_workers=1
+
+【正确应该：】
+CUDA_VISIBLE_DEVICES=0 python run_training.py py_func=train +training=train_pluto worker=single_machine_thread_pool worker.max_workers=4 scenario_builder=nuplan cache.cache_path=/home/fqf/nuplan/exp/sanity_check cache.use_cache_without_dataset=true data_loader.params.batch_size=4 data_loader.params.num_workers=1
 ```
 
 Training on the full dataset (without CIL):
@@ -113,6 +119,9 @@ Run simulation for a random scenario in the nuPlan-mini split
 
 ```
 sh ./script/run_pluto_planner.sh pluto_planner nuplan_mini mini_demo_scenario pluto_1M_aux_cil.ckpt /dir_to_save_the_simulation_result_video
+
+【正确应该：】
+sh ./script/run_pluto_planner.sh pluto_planner nuplan mini_demo_scenario pluto_1M_aux_cil.ckpt /home/fqf/fqf_folder/01_Git/pluto/simulation_result_video
 ```
 
 The rendered simulation video will be saved to the specified directory (need change `/dir_to_save_the_simulation_result_video`).

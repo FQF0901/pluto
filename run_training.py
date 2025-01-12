@@ -14,11 +14,18 @@ from nuplan.planning.script.utils import set_default_path
 from nuplan.planning.training.experiments.caching import cache_data
 from omegaconf import DictConfig
 
-from src.custom_training import (
+from src.custom_training.custom_training_builder import (
     TrainingEngine,
     build_training_engine,
     update_config_for_training,
 )
+
+import os
+NUPLAN_DATA_ROOT = os.getenv('NUPLAN_DATA_ROOT', '$HOME/fqf/nuplan/dataset')
+NUPLAN_MAPS_ROOT = os.getenv('NUPLAN_MAPS_ROOT', '$HOME/fqf/nuplan/dataset/maps')
+NUPLAN_DB_FILES = os.getenv('NUPLAN_DB_FILES', '$HOME/fqf/nuplan/dataset/nuplan-v1.1/splits/mini')
+NUPLAN_MAP_VERSION = os.getenv('NUPLAN_MAP_VERSION', 'nuplan-maps-v1.1')
+
 
 logging.getLogger("numba").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -49,7 +56,7 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
     build_training_experiment_folder(cfg=cfg)
 
     # Build worker
-    worker = build_worker(cfg)
+    worker = build_worker(cfg)  # 用于并行
 
     if cfg.py_func == "train":
         # Build training engine
@@ -99,6 +106,7 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
         # Precompute and cache all features
         logger.info("Starting caching...")
         with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "caching"):
+            cfg.scenario_builder.data_root = '/home/fqf/nuplan/dataset/nuplan-v1.1/splits/mini'
             cache_data(cfg=cfg, worker=worker)
         return None
     else:
