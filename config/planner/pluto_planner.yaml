@@ -2,7 +2,7 @@ pluto_planner:
   _target_: src.planners.pluto_planner.PlutoPlanner
   _convert_: "all"
 
-  render: false
+  render: true
   eval_dt: 0.1
   eval_num_frames: 40
   candidate_subsample_ratio: 1.0

@@ -22,6 +22,12 @@ from nuplan.planning.script.utils import (
 from nuplan.planning.simulation.planner.abstract_planner import AbstractPlanner
 from omegaconf import DictConfig, OmegaConf
 
+import os
+NUPLAN_DATA_ROOT = os.getenv('NUPLAN_DATA_ROOT', '/home/fqf/nuplan/dataset')
+NUPLAN_MAPS_ROOT = os.getenv('NUPLAN_MAPS_ROOT', '/home/fqf/nuplan/dataset/maps')
+NUPLAN_DB_FILES = os.getenv('NUPLAN_DB_FILES', '/home/fqf/nuplan/dataset/nuplan-v1.1/splits/mini')
+NUPLAN_MAP_VERSION = os.getenv('NUPLAN_MAP_VERSION', 'nuplan-maps-v1.1')
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -129,6 +135,7 @@ def main(cfg: DictConfig) -> None:
         cfg.simulation_log_main_path is None
     ), "Simulation_log_main_path must not be set when running simulation."
 
+    cfg.scenario_builder.data_root = '/home/fqf/nuplan/dataset/nuplan-v1.1/splits/mini' # 修改数据集路径: handcode by fqf
     run_simulation(cfg=cfg)
 
     if is_s3_path(Path(cfg.output_dir)):

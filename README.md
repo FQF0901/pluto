@@ -31,7 +31,7 @@ conda activate pluto
 # install nuplan-devkit
 git clone https://github.com/motional/nuplan-devkit.git && cd nuplan-devkit
 pip install -e .
-pip install -r ./requirements.txt
+pip install -r ./requirements.txt【另需安装imageio作可视化，注意numpy可能需要降级为1.23.5】
 
 # setup pluto
 cd ..
@@ -54,6 +54,31 @@ Preprocess the dataset to accelerate training. It is recommended to run a small 
 
 【正确应该：】
 python run_training.py py_func=cache +training=train_pluto scenario_builder=nuplan cache.cache_path=/home/fqf/nuplan/exp/sanity_check cache.cleanup_cache=true scenario_filter=training_scenarios_tiny worker=sequential
+```
+
+nuplan的一些配置
+```
+【scenario_builder】
+1. nuplan: 默认的场景构建器。支持从日志文件中提取场景，并根据配置文件或过滤器生成仿真场景
+2. nuplan_challenge: 专门用于 nuPlan 挑战赛的场景构建器。包含一些特定的预处理步骤或过滤器，以适应挑战赛的需求
+3. nuplan_test: 用于测试集的场景构建器。
+4. nuplan_mini: 用于小型数据集或演示的场景构建器。通常只包含少量场景，用于快速测试和演示
+
+【scenario_filter】
+1. 预定义的场景过滤器: mini_demo_scenario, training_scenarios, validation_scenarios, test_scenarios, all_scenarios
+2. 基于场景类型的过滤器: intersection, highway, roundabout, pedestrian_crossing, lane_change, stop_sign, traffic_light
+3. 难度级别: easy, medium, hard
+4. 天气条件: clear, rain, snow
+5. 时间条件: day, night
+6. 地理位置: boston, singapore, pittsburgh
+eg: 
+python run_simulation.py \
+    scenario_builder=nuplan \
+    scenario_filter=mini_demo_scenario \
+    scenario_filter.difficulty=hard \
+    scenario_filter.weather=clear \
+    scenario_filter.time_of_day=day \
+    ...
 ```
 
 Then preprocess the whole nuPlan training set (this will take some time). You may need to change `cache.cache_path` to suit your condition

@@ -58,6 +58,9 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
     # Build worker
     worker = build_worker(cfg)  # 用于并行
 
+    # 修改数据集路径: handcode by fqf
+    cfg.scenario_builder.data_root = '/home/fqf/nuplan/dataset/nuplan-v1.1/splits/mini'
+
     if cfg.py_func == "train":
         # Build training engine
         with ProfilerContextManager(
@@ -106,7 +109,6 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
         # Precompute and cache all features
         logger.info("Starting caching...")
         with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "caching"):
-            cfg.scenario_builder.data_root = '/home/fqf/nuplan/dataset/nuplan-v1.1/splits/mini'
             cache_data(cfg=cfg, worker=worker)
         return None
     else:

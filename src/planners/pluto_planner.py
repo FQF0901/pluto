@@ -44,9 +44,9 @@ class PlutoPlanner(AbstractPlanner):
         planner: TorchModuleWrapper,
         scenario: AbstractScenario = None,
         planner_ckpt: str = None,
-        render: bool = False,
+        render: bool = True,
         use_gpu=True,
-        save_dir=None,
+        save_dir='/home/fqf/fqf_folder/01_Git/pluto/simulation_result_video',
         candidate_subsample_ratio: int = 0.5,
         candidate_min_num: int = 1,
         candidate_max_num: int = 20,
@@ -436,12 +436,11 @@ class PlutoPlanner(AbstractPlanner):
         if self._render:
             import imageio
 
-            imageio.mimsave(
-                self.video_dir
-                / f"{self._scenario.log_name}_{self._scenario.token}.mp4",
-                self._imgs,
-                fps=10,
-            )
-            print("\n video saved to ", self.video_dir / "video.mp4\n")
+            video_path = self.video_dir / f"{self._scenario.log_name}_{self._scenario.token}.mp4"
+            try:
+                imageio.mimsave(video_path, self._imgs, fps=10)
+                print(f"\nVideo successfully saved to {video_path}\n")
+            except Exception as e:
+                print(f"\nFailed to save video: {str(e)}\n")
 
         return report
