@@ -177,7 +177,7 @@ class PlanningModel(TorchModuleWrapper):
         处理输入数据，生成模型预测输出。
 
         参数:
-        - data: 包含代理位置、方向、有效掩码，地图多边形中心和有效掩码等信息的字典。
+        - data: 包含agent, map, reference_line, static_objects, current_state, origin, angle, cost_map的字典。
 
         返回:
         - out: 包含模型输出的字典，包括轨迹、概率和预测等信息。
@@ -206,20 +206,20 @@ class PlanningModel(TorchModuleWrapper):
         key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)
 
         # 使用编码器分别对代理、地图多边形和静态物体进行编码
-        x_agent = self.agent_encoder(data)
-        x_polygon = self.map_encoder(data)
-        x_static, static_pos, static_key_padding = self.static_objects_encoder(data)
+        x_agent = self.agent_encoder(data)  # [4, 23, 128]: [batch_size, n_agent, dim]
+        x_polygon = self.map_encoder(data)  # [4, 149, 128]
+        x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # [4, 5, 128], [4, 5, 3], [4, 5]
 
         # 合并所有编码后的特征
-        x = torch.cat([x_agent, x_polygon, x_static], dim=1)
+        x = torch.cat([x_agent, x_polygon, x_static], dim=1)    # [4, 177, 128]
 
         # 合并位置信息和静态物体位置信息，并生成位置嵌入
-        pos = torch.cat([pos, static_pos], dim=1)
-        pos_embed = self.pos_emb(pos)
+        pos = torch.cat([pos, static_pos], dim=1)   # [4, 177, 3]
+        pos_embed = self.pos_emb(pos)   # [4, 177, 128]
 
         # 合并所有掩码信息
-        key_padding_mask = torch.cat([key_padding_mask, static_key_padding], dim=-1)
-        x = x + pos_embed
+        key_padding_mask = torch.cat([key_padding_mask, static_key_padding], dim=-1)    # [4, 177]
+        x = x + pos_embed   # [4, 177, 128] + [4, 177, 128] = [4, 177, 128]
 
         # 通过编码器块进行进一步处理
         for blk in self.encoder_blocks:
@@ -227,24 +227,22 @@ class PlanningModel(TorchModuleWrapper):
         x = self.norm(x)
 
         # 使用代理预测器对代理的未来位置进行预测
-        prediction = self.agent_predictor(x[:, 1:A])
+        prediction = self.agent_predictor(x[:, 1:A])    # A=23, prediction:[4, 22, 80, 6]貌似[batch_size, n_agent, T_future, dim_mod]
 
         # 检查是否有可用的参考线
-        ref_line_available = data["reference_line"]["position"].shape[1] > 0
+        ref_line_available = data["reference_line"]["position"].shape[1] > 0    # true
 
         # 如果有可用的参考线，则使用规划解码器生成轨迹和概率
         if ref_line_available:
-            trajectory, probability = self.planning_decoder(
-                data, {"enc_emb": x, "enc_key_padding_mask": key_padding_mask}
-            )
+            trajectory, probability = self.planning_decoder(data, {"enc_emb": x, "enc_key_padding_mask": key_padding_mask}) # [4, 3, 12, 80, 6], [4, 3, 12]
         else:
             trajectory, probability = None, None
 
         # 构建输出字典
         out = {
-            "trajectory": trajectory,
-            "probability": probability,  # (bs, R, M)
-            "prediction": prediction,  # (bs, A-1, T, 2)
+            "trajectory": trajectory,   # [4, 3, 12, 80, 6]
+            "probability": probability,  # (bs, R, M): [4, 3, 12]
+            "prediction": prediction,  # (bs, A-1, T, 2): [4, 22, 80, 6]
         }
 
         # 如果使用隐藏层投影，则添加到输出字典中
