@@ -133,14 +133,14 @@ class PlanningDecoder(nn.Module):
         nn.init.normal_(self.m_pos, mean=0.0, std=0.01)
 
     def forward(self, data, enc_data):
-        enc_emb = enc_data["enc_emb"]
-        enc_key_padding_mask = enc_data["enc_key_padding_mask"]
+        enc_emb = enc_data["enc_emb"]   # [4, 215, 128]
+        enc_key_padding_mask = enc_data["enc_key_padding_mask"] # [4, 215]
 
-        r_position = data["reference_line"]["position"]
-        r_vector = data["reference_line"]["vector"]
-        r_orientation = data["reference_line"]["orientation"]
-        r_valid_mask = data["reference_line"]["valid_mask"]
-        r_key_padding_mask = ~r_valid_mask.any(-1)
+        r_position = data["reference_line"]["position"] # [4, 3, 120, 2]
+        r_vector = data["reference_line"]["vector"] # [4, 3, 120, 2]
+        r_orientation = data["reference_line"]["orientation"]   # [4, 3, 120]
+        r_valid_mask = data["reference_line"]["valid_mask"] # [4, 3, 120]
+        r_key_padding_mask = ~r_valid_mask.any(-1)  # [4, 3]
 
         r_feature = torch.cat(
             [
@@ -149,40 +149,40 @@ class PlanningDecoder(nn.Module):
                 torch.stack([r_orientation.cos(), r_orientation.sin()], dim=-1),
             ],
             dim=-1,
-        )
+        )   # [4, 3, 120, 6]
 
-        bs, R, P, C = r_feature.shape
-        r_valid_mask = r_valid_mask.view(bs * R, P)
-        r_feature = r_feature.reshape(bs * R, P, C)
-        r_emb = self.r_encoder(r_feature, r_valid_mask).view(bs, R, -1)
+        bs, R, P, C = r_feature.shape   # [4, 3, 120, 6]
+        r_valid_mask = r_valid_mask.view(bs * R, P) # [12, 120]
+        r_feature = r_feature.reshape(bs * R, P, C) # [4, 3, 120, 6] -> [12, 120, 6]
+        r_emb = self.r_encoder(r_feature, r_valid_mask).view(bs, R, -1) # [4, 3, 128]
 
-        r_pos = torch.cat([r_position[:, :, 0], r_orientation[:, :, 0, None]], dim=-1)
-        r_emb = r_emb + self.r_pos_emb(r_pos)
+        r_pos = torch.cat([r_position[:, :, 0], r_orientation[:, :, 0, None]], dim=-1)  # [4, 3, ]
+        r_emb = r_emb + self.r_pos_emb(r_pos)   # [4, 3, 128] -> [4, 3, 128]
 
-        r_emb = r_emb.unsqueeze(2).repeat(1, 1, self.num_mode, 1)
-        m_emb = self.m_emb.repeat(bs, R, 1, 1)
+        r_emb = r_emb.unsqueeze(2).repeat(1, 1, self.num_mode, 1)   # [4, 3, 128] -> [4, 3, 12, 128]
+        m_emb = self.m_emb.repeat(bs, R, 1, 1)  # [4, 3, 12, 128]
 
-        q = self.q_proj(torch.cat([r_emb, m_emb], dim=-1))
+        q = self.q_proj(torch.cat([r_emb, m_emb], dim=-1))  # [4, 3, 12, 128]
 
         for blk in self.decoder_blocks:
             q = blk(
-                q,
-                enc_emb,
-                tgt_key_padding_mask=r_key_padding_mask,
-                memory_key_padding_mask=enc_key_padding_mask,
-                m_pos=self.m_pos,
-            )
+                q,  # [4, 3, 12, 128]
+                enc_emb,    # [4, 215, 128]
+                tgt_key_padding_mask=r_key_padding_mask,    # [4, 3]
+                memory_key_padding_mask=enc_key_padding_mask,   # [4, 215]
+                m_pos=self.m_pos,   # [1, 12, 128]
+            )   # q： [4, 3, 12, 128]
             assert torch.isfinite(q).all()
 
         if self.cat_x:
             x = enc_emb[:, 0].unsqueeze(1).unsqueeze(2).repeat(1, R, self.num_mode, 1)
             q = self.cat_x_proj(torch.cat([q, x], dim=-1))
 
-        loc = self.loc_head(q).view(bs, R, self.num_mode, self.future_steps, 2)
-        yaw = self.yaw_head(q).view(bs, R, self.num_mode, self.future_steps, 2)
-        vel = self.vel_head(q).view(bs, R, self.num_mode, self.future_steps, 2)
-        pi = self.pi_head(q).squeeze(-1)
+        loc = self.loc_head(q).view(bs, R, self.num_mode, self.future_steps, 2) # [4, 3, 12, 80, 2]
+        yaw = self.yaw_head(q).view(bs, R, self.num_mode, self.future_steps, 2) # [4, 3, 12, 80, 2]
+        vel = self.vel_head(q).view(bs, R, self.num_mode, self.future_steps, 2) # [4, 3, 12, 80, 2]
+        pi = self.pi_head(q).squeeze(-1)    # [4, 3, 12]
 
-        traj = torch.cat([loc, yaw, vel], dim=-1)
+        traj = torch.cat([loc, yaw, vel], dim=-1)   # [4, 3, 12, 80, 6]
 
         return traj, pi

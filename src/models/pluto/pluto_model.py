@@ -183,43 +183,43 @@ class PlanningModel(TorchModuleWrapper):
         - out: 包含模型输出的字典，包括轨迹、概率和预测等信息。
         """
         # 提取代理的历史位置、方向和掩码信息
-        agent_pos = data["agent"]["position"][:, :, self.history_steps - 1]
-        agent_heading = data["agent"]["heading"][:, :, self.history_steps - 1]
-        agent_mask = data["agent"]["valid_mask"][:, :, : self.history_steps]
+        agent_pos = data["agent"]["position"][:, :, self.history_steps - 1] # [4, 49, 2]
+        agent_heading = data["agent"]["heading"][:, :, self.history_steps - 1]  # [4, 49]
+        agent_mask = data["agent"]["valid_mask"][:, :, : self.history_steps]    # [4, 49, 21]
         
         # 提取地图多边形中心和掩码信息
-        polygon_center = data["map"]["polygon_center"]
-        polygon_mask = data["map"]["valid_mask"]
+        polygon_center = data["map"]["polygon_center"]  # [4, 149, 3]
+        polygon_mask = data["map"]["valid_mask"]    # [4, 149, 20]
 
         # 获取批次大小和代理数量
-        bs, A = agent_pos.shape[0:2]
+        bs, A = agent_pos.shape[0:2]    # 4, 49
 
         # 合并代理位置和多边形中心，合并代理方向和多边形方向，并进行角度归一化
-        position = torch.cat([agent_pos, polygon_center[..., :2]], dim=1)
-        angle = torch.cat([agent_heading, polygon_center[..., 2]], dim=1)
-        angle = (angle + math.pi) % (2 * math.pi) - math.pi
-        pos = torch.cat([position, angle.unsqueeze(-1)], dim=-1)
+        position = torch.cat([agent_pos, polygon_center[..., :2]], dim=1)   # [4, 198, 2]
+        angle = torch.cat([agent_heading, polygon_center[..., 2]], dim=1)   # [4, 198]
+        angle = (angle + math.pi) % (2 * math.pi) - math.pi # [4, 198]
+        pos = torch.cat([position, angle.unsqueeze(-1)], dim=-1)    # [4, 198, 3]
 
         # 计算代理和多边形的有效掩码
-        agent_key_padding = ~(agent_mask.any(-1))
-        polygon_key_padding = ~(polygon_mask.any(-1))
-        key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)
+        agent_key_padding = ~(agent_mask.any(-1))   # [4, 49]
+        polygon_key_padding = ~(polygon_mask.any(-1))   # [4, 149]
+        key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)  # [4, 198]
 
         # 使用编码器分别对代理、地图多边形和静态物体进行编码
-        x_agent = self.agent_encoder(data)  # [4, 23, 128]: [batch_size, n_agent, dim]
+        x_agent = self.agent_encoder(data)  # [4, 49, 128]: [batch_size, n_agent, dim]
         x_polygon = self.map_encoder(data)  # [4, 149, 128]
-        x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # [4, 5, 128], [4, 5, 3], [4, 5]
+        x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # [4, 17, 128], [4, 17, 3], [4, 17]
 
         # 合并所有编码后的特征
-        x = torch.cat([x_agent, x_polygon, x_static], dim=1)    # [4, 177, 128]
+        x = torch.cat([x_agent, x_polygon, x_static], dim=1)    # [4, 215, 128]
 
         # 合并位置信息和静态物体位置信息，并生成位置嵌入
-        pos = torch.cat([pos, static_pos], dim=1)   # [4, 177, 3]
-        pos_embed = self.pos_emb(pos)   # [4, 177, 128]
+        pos = torch.cat([pos, static_pos], dim=1)   # [4, 215, 3]
+        pos_embed = self.pos_emb(pos)   # [4, 215, 128]
 
         # 合并所有掩码信息
-        key_padding_mask = torch.cat([key_padding_mask, static_key_padding], dim=-1)    # [4, 177]
-        x = x + pos_embed   # [4, 177, 128] + [4, 177, 128] = [4, 177, 128]
+        key_padding_mask = torch.cat([key_padding_mask, static_key_padding], dim=-1)    # [4, 215]
+        x = x + pos_embed   # [4, 215, 128] + [4, 215, 128] = [4, 215, 128]
 
         # 通过编码器块进行进一步处理
         for blk in self.encoder_blocks:
@@ -227,7 +227,7 @@ class PlanningModel(TorchModuleWrapper):
         x = self.norm(x)
 
         # 使用代理预测器对代理的未来位置进行预测
-        prediction = self.agent_predictor(x[:, 1:A])    # A=23, prediction:[4, 22, 80, 6]貌似[batch_size, n_agent, T_future, dim_mod]
+        prediction = self.agent_predictor(x[:, 1:A])    # A=49, prediction:[4, 48, 80, 6]貌似[batch_size, n_agent-1, T_future, dim_mod]
 
         # 检查是否有可用的参考线
         ref_line_available = data["reference_line"]["position"].shape[1] > 0    # true
@@ -242,7 +242,7 @@ class PlanningModel(TorchModuleWrapper):
         out = {
             "trajectory": trajectory,   # [4, 3, 12, 80, 6]
             "probability": probability,  # (bs, R, M): [4, 3, 12]
-            "prediction": prediction,  # (bs, A-1, T, 2): [4, 22, 80, 6]
+            "prediction": prediction,  # (bs, A-1, T, 2): [4, 48, 80, 6]
         }
 
         # 如果使用隐藏层投影，则添加到输出字典中
@@ -257,8 +257,8 @@ class PlanningModel(TorchModuleWrapper):
             out["ref_free_trajectory"] = ref_free_traj
 
         # 如果不在训练模式下，则生成最终输出轨迹、预测和概率
-        if not self.training:
-            if self.ref_free_traj:
+        if not self.training:   # train的时候为false
+            if self.ref_free_traj:  # train的时候为false
                 ref_free_traj_angle = torch.arctan2(
                     ref_free_traj[..., 3], ref_free_traj[..., 2]
                 )
@@ -275,26 +275,26 @@ class PlanningModel(TorchModuleWrapper):
                     prediction[..., 4:6],
                 ],
                 dim=-1,
-            )
+            )   # [4, 48, 80, 5]
             out["output_prediction"] = output_prediction
 
             if trajectory is not None:
-                r_padding_mask = ~data["reference_line"]["valid_mask"].any(-1)
+                r_padding_mask = ~data["reference_line"]["valid_mask"].any(-1)  # [4, 3]
                 probability.masked_fill_(r_padding_mask.unsqueeze(-1), -1e6)
 
-                angle = torch.atan2(trajectory[..., 3], trajectory[..., 2])
+                angle = torch.atan2(trajectory[..., 3], trajectory[..., 2]) # [4, 3, 12, 80]
                 out_trajectory = torch.cat(
                     [trajectory[..., :2], angle.unsqueeze(-1)], dim=-1
-                )
+                )   # [4, 3, 12, 80, 3]
 
-                bs, R, M, T, _ = out_trajectory.shape
-                flattened_probability = probability.reshape(bs, R * M)
+                bs, R, M, T, _ = out_trajectory.shape   # 4, 3, 12, 80
+                flattened_probability = probability.reshape(bs, R * M)  # [4, 36]
                 best_trajectory = out_trajectory.reshape(bs, R * M, T, -1)[
                     torch.arange(bs), flattened_probability.argmax(-1)
-                ]
+                ]   # [4, 80, 3]
 
-                out["output_trajectory"] = best_trajectory
-                out["candidate_trajectories"] = out_trajectory
+                out["output_trajectory"] = best_trajectory  # [4, 80, 3]
+                out["candidate_trajectories"] = out_trajectory  # [4, 3, 12, 80, 3]
             else:
                 out["output_trajectory"] = out["output_ref_free_trajectory"]
                 out["probability"] = torch.zeros(1, 0, 0)

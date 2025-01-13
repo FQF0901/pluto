@@ -99,9 +99,9 @@ class LightningTrainer(pl.LightningModule):
         :return: model's scalar loss
         """
         features, targets, scenarios = batch
-        res = self.forward(features["feature"].data)
+        res = self.forward(features["feature"].data)    # pluto net: res包含trajectory, probaility, prediction, output_prediction, output_trajectory, candidate_trajectories
 
-        losses = self._compute_objectives(res, features["feature"].data)
+        losses = self._compute_objectives(res, features["feature"].data)    # cal loss
         metrics = self._compute_metrics(res, features["feature"].data, prefix)
         self._log_step(losses["loss"], losses, metrics, prefix)
 
