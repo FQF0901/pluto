@@ -63,8 +63,13 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
 
     if cfg.py_func == "train":  # 在train_pluto.yaml里配置的
         # Build training engine
-        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "build_training_engine"):
-            engine = build_training_engine(cfg, worker)
+        # ProfilerContextManager为nuplan库函数，是一个上下文管理器，用于在特定代码块执行期间进行性能分析（profiling）。它可以帮助开发者记录和分析代码的运行时间、资源使用情况等性能指标
+        # ProfilerContextManager 的一般用法是通过 with 语句包裹需要进行性能分析的代码块。其常见参数包括：
+        # output_dir：指定性能分析结果的输出目录。
+        # enable_profiling：布尔值，决定是否启用性能分析。
+        # description：描述标签，用于标识当前性能分析的上下文，方便区分不同部分的性能数据
+        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "build_training_engine"): # 输出目录、是否启用性能分析、描述标签
+            engine = build_training_engine(cfg, worker) # 创建训练器、模型和数据模块，并将它们组合成一个 TrainingEngine 对象
 
         # Run training
         logger.info("Starting training...")

@@ -149,13 +149,13 @@ def build_lightning_module(
     """
     # Create the complete Module
     if "custom_trainer" in cfg:
-        model = instantiate(
+        model = instantiate(    # 用 hydra.utils.instantiate 或类似的工具函数来创建对象
             cfg.custom_trainer,
-            model=torch_module_wrapper,
-            lr=cfg.lr,
-            weight_decay=cfg.weight_decay,
-            epochs=cfg.epochs,
-            warmup_epochs=cfg.warmup_epochs,
+            model=torch_module_wrapper, # 传入封装好的 PyTorch 模型
+            lr=cfg.lr,  # 学习率
+            weight_decay=cfg.weight_decay,  # 权重衰减
+            epochs=cfg.epochs,  # 训练轮数
+            warmup_epochs=cfg.warmup_epochs,    # 预热轮数
         )
     else:
         objectives = build_objectives(cfg)
@@ -242,19 +242,20 @@ def build_training_engine(cfg: DictConfig, worker: WorkerPool) -> TrainingEngine
     :param worker: Worker to submit tasks which can be executed in parallel
     :return: TrainingEngine
     """
-    logger.info("Building training engine...")
+    logger.info("Building training engine...")  # 记录构建训练引擎的日志信息
 
-    trainer = build_custom_trainer(cfg)
+    trainer = build_custom_trainer(cfg) # 根据配置文件cfg创建PyTorch Lightning的Trainer对象
 
-    # Create model
-    torch_module_wrapper = build_torch_module_wrapper(cfg.model)
+    # Create model. nuplan库函数
+    torch_module_wrapper = build_torch_module_wrapper(cfg.model)    # cfg.model在train_pluto.yaml里配置为pluto_model
 
-    # Build the datamodule
+    # Build the datamodule. 使用build_lightning_datamodule函数创建数据模块datamodule
     datamodule = build_lightning_datamodule(cfg, worker, torch_module_wrapper)
 
-    # Build lightning module
+    # Build lightning module. 使用build_lightning_module函数创建模型模块model
     model = build_lightning_module(cfg, torch_module_wrapper)
 
+    # 将上述构建的Trainer、DataModule和Model封装成一个TrainingEngine对象并返回
     engine = TrainingEngine(trainer=trainer, datamodule=datamodule, model=model)
 
     return engine

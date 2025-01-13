@@ -7,7 +7,7 @@ defaults:       # 覆盖了多个默认配置，包括数据增强、数据分�
         - override /data_augmentation:
                   - contrastive_scenario_generator
         - override /splitter: nuplan
-        - override /model: pluto_model
+        - override /model: pluto_model  # 会从该路径的.yaml里加载net结构和参数
         - override /scenario_filter: training_scenarios_tiny
         - override /custom_trainer: pluto_trainer
         - override /lightning: custom_lightning
