@@ -1,9 +1,9 @@
 # @package _global_
-job_name: pluto
-py_func: train
-objective_aggregate_mode: mean
+job_name: pluto # 配置了一个名为pluto的训练任务
+py_func: train  # 指定了训练函数为train
+objective_aggregate_mode: mean  # 目标聚合模式为mean
 
-defaults:
+defaults:       # 覆盖了多个默认配置，包括数据增强、数据分割、模型选择、场景过滤、自定义训练器和闪电框架配置
         - override /data_augmentation:
                   - contrastive_scenario_generator
         - override /splitter: nuplan

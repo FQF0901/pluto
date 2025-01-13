@@ -42,31 +42,31 @@ logger = logging.getLogger(__name__)
 
 def update_config_for_training(cfg: DictConfig) -> None:
     """
-    Updates the config based on some conditions.
+    Updates the config based on some conditions. 这段代码的主要功能是根据某些条件更新配置文件 cfg
     :param cfg: omegaconf dictionary that is used to run the experiment.
     """
     # Make the configuration editable.
-    OmegaConf.set_struct(cfg, False)
+    OmegaConf.set_struct(cfg, False)    # 通过 OmegaConf.set_struct(cfg, False) 使配置文件可编辑
 
-    if cfg.cache.cache_path is None:
+    if cfg.cache.cache_path is None:    # 如果 cache_path 未设置，则禁用缓存并记录警告
         logger.warning("Parameter cache_path is not set, caching is disabled")
     else:
-        if not str(cfg.cache.cache_path).startswith("s3://"):
+        if not str(cfg.cache.cache_path).startswith("s3://"):   # 如果 cache_path 设置且不是 S3 路径
             if cfg.cache.cleanup_cache and Path(cfg.cache.cache_path).exists():
                 rmtree(cfg.cache.cache_path)
 
             Path(cfg.cache.cache_path).mkdir(parents=True, exist_ok=True)
 
-    if cfg.lightning.trainer.overfitting.enable:
+    if cfg.lightning.trainer.overfitting.enable:    # 如果启用了过拟合模式，则将数据加载器的线程数设为 0。
         cfg.data_loader.params.num_workers = 0
 
-    OmegaConf.resolve(cfg)
+    OmegaConf.resolve(cfg)  # 解析配置中的所有引用和插值，确保配置文件中的所有变量都被正确解析并替换为实际值
 
     # Finalize the configuration and make it non-editable.
-    OmegaConf.set_struct(cfg, True)
+    OmegaConf.set_struct(cfg, True) # 使配置文件不可编辑。
 
     # Log the final configuration after all overrides, interpolations and updates.
-    if cfg.log_config:
+    if cfg.log_config:  # 如果启用了日志记录，则记录实验名称、组名及最终配置
         logger.info(
             f"Creating experiment name [{cfg.experiment}] in group [{cfg.group}] with config..."
         )

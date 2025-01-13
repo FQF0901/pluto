@@ -27,45 +27,43 @@ NUPLAN_DB_FILES = os.getenv('NUPLAN_DB_FILES', '$HOME/fqf/nuplan/dataset/nuplan-
 NUPLAN_MAP_VERSION = os.getenv('NUPLAN_MAP_VERSION', 'nuplan-maps-v1.1')
 
 
-logging.getLogger("numba").setLevel(logging.WARNING)
-logger = logging.getLogger(__name__)
+logging.getLogger("numba").setLevel(logging.WARNING)    # 将 numba 模块的日志级别设置为 WARNING，以减少不必要的日志输出
+logger = logging.getLogger(__name__)    # 获取当前模块的日志记录器实例，用于后续的日志记录
 
 # If set, use the env. variable to overwrite the default dataset and experiment paths
-set_default_path()
+set_default_path()  # 要小心确认 ！
 
 # If set, use the env. variable to overwrite the Hydra config
 CONFIG_PATH = "./config"
 CONFIG_NAME = "default_training"
 
 
-@hydra.main(config_path=CONFIG_PATH, config_name=CONFIG_NAME)
+@hydra.main(config_path=CONFIG_PATH, config_name=CONFIG_NAME)   # Hydra库的装饰器@hydra.main：指定配置文件的路径和名称，作为参数传递给主函数
 def main(cfg: DictConfig) -> Optional[TrainingEngine]:
     """
     Main entrypoint for training/validation experiments.
     :param cfg: omegaconf dictionary
     """
-    pl.seed_everything(cfg.seed, workers=True)
+    pl.seed_everything(cfg.seed, workers=True)  # pytorch_lightning：一个用于简化 PyTorch 模型训练过程并提供高层次的抽象和便捷的功能的库
 
-    # Configure logger
+    # Configure logger, nuplan的logger
     build_logger(cfg)
 
     # Override configs based on setup, and print config
     update_config_for_training(cfg)
 
     # Create output storage folder
-    build_training_experiment_folder(cfg=cfg)
+    build_training_experiment_folder(cfg=cfg)   # nuplan库函数
 
     # Build worker
-    worker = build_worker(cfg)  # 用于并行
+    worker = build_worker(cfg)  # 4线程并行
 
     # 修改数据集路径: handcode by fqf
     cfg.scenario_builder.data_root = '/home/fqf/nuplan/dataset/nuplan-v1.1/splits/mini'
 
-    if cfg.py_func == "train":
+    if cfg.py_func == "train":  # 在train_pluto.yaml里配置的
         # Build training engine
-        with ProfilerContextManager(
-            cfg.output_dir, cfg.enable_profiling, "build_training_engine"
-        ):
+        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "build_training_engine"):
             engine = build_training_engine(cfg, worker)
 
         # Run training
