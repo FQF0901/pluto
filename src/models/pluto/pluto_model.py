@@ -182,7 +182,7 @@ class PlanningModel(TorchModuleWrapper):
         返回:
         - out: 包含模型输出的字典，包括轨迹、概率和预测等信息。
         """
-        # 提取代理的历史位置、方向和掩码信息
+        # 提取代理的历史位置、方向和掩码信息。agent的[位置坐标、航向角、速度向量、感知边界框的尺寸、该帧的观察状态]
         agent_pos = data["agent"]["position"][:, :, self.history_steps - 1] # [4, 49, 2]
         agent_heading = data["agent"]["heading"][:, :, self.history_steps - 1]  # [4, 49]
         agent_mask = data["agent"]["valid_mask"][:, :, : self.history_steps]    # [4, 49, 21]
@@ -206,11 +206,11 @@ class PlanningModel(TorchModuleWrapper):
         key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)  # [4, 198]
 
         # 使用编码器分别对代理、地图多边形和静态物体进行编码
-        x_agent = self.agent_encoder(data)  # [4, 49, 128]: [batch_size, n_agent, dim]
-        x_polygon = self.map_encoder(data)  # [4, 149, 128]
-        x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # [4, 17, 128], [4, 17, 3], [4, 17]
+        x_agent = self.agent_encoder(data)  # FPN: [4, 49, 128]: [batch_size, n_agent, dim]
+        x_polygon = self.map_encoder(data)  # PointNet: [4, 149, 128]
+        x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # MLP: [4, 17, 128], [4, 17, 3], [4, 17]。static obj的[位置坐标、航向角、感知边界框的尺寸]
 
-        # 合并所有编码后的特征
+        # 合并所有编码后的特征，为啥没有自车？
         x = torch.cat([x_agent, x_polygon, x_static], dim=1)    # [4, 215, 128]
 
         # 合并位置信息和静态物体位置信息，并生成位置嵌入
@@ -224,7 +224,7 @@ class PlanningModel(TorchModuleWrapper):
         # 通过编码器块进行进一步处理
         for blk in self.encoder_blocks:
             x = blk(x, key_padding_mask=key_padding_mask, return_attn_weights=False)
-        x = self.norm(x)
+        x = self.norm(x)    # [4, 215, 128]
 
         # 使用代理预测器对代理的未来位置进行预测
         prediction = self.agent_predictor(x[:, 1:A])    # A=49, prediction:[4, 48, 80, 6]貌似[batch_size, n_agent-1, T_future, dim_mod]

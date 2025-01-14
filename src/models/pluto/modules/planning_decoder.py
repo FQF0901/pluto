@@ -41,8 +41,8 @@ class DecoderLayer(nn.Module):
 
     def forward(
         self,
-        tgt,
-        memory,
+        tgt,    # lat_query
+        memory, # F_A， F_O， F_P, F_AV 的concat，实际就是K&V
         tgt_key_padding_mask: Optional[Tensor] = None,
         memory_key_padding_mask: Optional[Tensor] = None,
         m_pos: Optional[Tensor] = None,
@@ -55,29 +55,23 @@ class DecoderLayer(nn.Module):
 
         tgt = tgt.transpose(1, 2).reshape(bs * M, R, D)
         tgt2 = self.norm1(tgt)
-        tgt2 = self.r2r_attn(
-            tgt2, tgt2, tgt2, key_padding_mask=tgt_key_padding_mask.repeat(M, 1)
-        )[0]
-        tgt = tgt + self.dropout1(tgt2)
+        tgt2 = self.r2r_attn(tgt2, tgt2, tgt2, key_padding_mask=tgt_key_padding_mask.repeat(M, 1))[0]    # lateral self-attention
+        tgt = tgt + self.dropout1(tgt2) # state dropout encoder (SDE) ?
 
         tgt_tmp = tgt.reshape(bs, M, R, D).transpose(1, 2).reshape(bs * R, M, D)
         tgt_valid_mask = ~tgt_key_padding_mask.reshape(-1)
         tgt_valid = tgt_tmp[tgt_valid_mask]
         tgt2_valid = self.norm2(tgt_valid)
-        tgt2_valid, _ = self.m2m_attn(
-            tgt2_valid + m_pos, tgt2_valid + m_pos, tgt2_valid
-        )
-        tgt_valid = tgt_valid + self.dropout2(tgt2_valid)
+        tgt2_valid, _ = self.m2m_attn(tgt2_valid + m_pos, tgt2_valid + m_pos, tgt2_valid)   # longitudinal selfattention
+        tgt_valid = tgt_valid + self.dropout2(tgt2_valid)   # state dropout encoder (SDE) ?
         tgt = torch.zeros_like(tgt_tmp)
         tgt[tgt_valid_mask] = tgt_valid
 
         tgt = tgt.reshape(bs, R, M, D).view(bs, R * M, D)
         tgt2 = self.norm3(tgt)
-        tgt2 = self.cross_attn(
-            tgt2, memory, memory, key_padding_mask=memory_key_padding_mask
-        )[0]
+        tgt2 = self.cross_attn(tgt2, memory, memory, key_padding_mask=memory_key_padding_mask)[0]    # query-to-scene cross-attention，其中tgt2是最终的Q, memory是基于环境的K&V
 
-        tgt = tgt + self.dropout2(tgt2)
+        tgt = tgt + self.dropout2(tgt2) # state dropout encoder (SDE) ?
         tgt2 = self.norm4(tgt)
         tgt2 = self.ffn(tgt2)
         tgt = tgt + self.dropout3(tgt2)
@@ -133,7 +127,7 @@ class PlanningDecoder(nn.Module):
         nn.init.normal_(self.m_pos, mean=0.0, std=0.01)
 
     def forward(self, data, enc_data):
-        enc_emb = enc_data["enc_emb"]   # [4, 215, 128]
+        enc_emb = enc_data["enc_emb"]   # 这是 F_A， F_O， F_P, F_AV 的concat，实际就是K&V: [4, 215, 128]
         enc_key_padding_mask = enc_data["enc_key_padding_mask"] # [4, 215]
 
         r_position = data["reference_line"]["position"] # [4, 3, 120, 2]
@@ -154,7 +148,7 @@ class PlanningDecoder(nn.Module):
         bs, R, P, C = r_feature.shape   # [4, 3, 120, 6]
         r_valid_mask = r_valid_mask.view(bs * R, P) # [12, 120]
         r_feature = r_feature.reshape(bs * R, P, C) # [4, 3, 120, 6] -> [12, 120, 6]
-        r_emb = self.r_encoder(r_feature, r_valid_mask).view(bs, R, -1) # [4, 3, 128]
+        r_emb = self.r_encoder(r_feature, r_valid_mask).view(bs, R, -1) # 这个貌似是lat_query，使用PointsEncoder: [4, 3, 128]
 
         r_pos = torch.cat([r_position[:, :, 0], r_orientation[:, :, 0, None]], dim=-1)  # [4, 3, ]
         r_emb = r_emb + self.r_pos_emb(r_pos)   # [4, 3, 128] -> [4, 3, 128]
@@ -162,7 +156,7 @@ class PlanningDecoder(nn.Module):
         r_emb = r_emb.unsqueeze(2).repeat(1, 1, self.num_mode, 1)   # [4, 3, 128] -> [4, 3, 12, 128]
         m_emb = self.m_emb.repeat(bs, R, 1, 1)  # [4, 3, 12, 128]
 
-        q = self.q_proj(torch.cat([r_emb, m_emb], dim=-1))  # [4, 3, 12, 128]
+        q = self.q_proj(torch.cat([r_emb, m_emb], dim=-1))  # 这个貌似是lat_query: [4, 3, 12, 128]
 
         for blk in self.decoder_blocks:
             q = blk(
