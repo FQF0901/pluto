@@ -37,6 +37,18 @@ pip install -r ./requirements.txt【另需安装imageio作可视化，注意nump
 cd ..
 git clone https://github.com/jchengai/pluto.git && cd pluto
 sh ./script/setup_env.sh
+
+【服务器也需要改下setup_env.sh：】
+#!/bin/sh
+
+# 安装PyTorch和torchvision，同时指定可信主机
+pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118 --trusted-host download.pytorch.org
+
+# 安装natten并指定可信主机
+pip3 install natten==0.14.6 -f https://shi-labs.com/natten/wheels/cu118/torch2.0.0/index.html --trusted-host shi-labs.com
+
+# 安装其他依赖项，并传递任何需要的可信主机（如果requirements.txt中有外部链接）
+pip install -r ./requirements.txt --trusted-host download.pytorch.org --trusted-host data.pyg.org --trusted-host shi-labs.com
 ```
 
 ## Feature Cache
