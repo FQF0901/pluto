@@ -52,14 +52,14 @@ class AgentEncoder(nn.Module):
         )
 
     def forward(self, data):
-        T = self.hist_steps
+        T = self.hist_steps # 21
 
-        position = data["agent"]["position"][:, :, :T]
-        heading = data["agent"]["heading"][:, :, :T]
-        velocity = data["agent"]["velocity"][:, :, :T]
-        shape = data["agent"]["shape"][:, :, :T]
-        category = data["agent"]["category"].long()
-        valid_mask = data["agent"]["valid_mask"][:, :, :T]
+        position = data["agent"]["position"][:, :, :T]  # [batch_size, N_agents, T_history, x/y]: [4, 49, 101, 2] -> [4, 49, 21, 2]
+        heading = data["agent"]["heading"][:, :, :T]    # [batch_size, N_agents, T_history, heading]: [4, 49, 101] -> [4, 49, 21]
+        velocity = data["agent"]["velocity"][:, :, :T]  # [batch_size, N_agents, T_history, x_mps/y_mps]: [4, 49, 101, 2] -> [4, 49, 21, 2]
+        shape = data["agent"]["shape"][:, :, :T]    # [batch_size, N_agents, T_history, width/length]: [4, 49, 101, 2] -> [4, 49, 21, 2]
+        category = data["agent"]["category"].long() # [batch_size, N_agents]: [4, 49] -> [4, 49]
+        valid_mask = data["agent"]["valid_mask"][:, :, :T]  # [batch_size, N_agents, T_history]: [4, 49, 101] -> [4, 49, 21]
 
         heading_vec = self.to_vector(heading, valid_mask)
         valid_mask_vec = valid_mask[..., 1:] & valid_mask[..., :-1]
@@ -73,7 +73,7 @@ class AgentEncoder(nn.Module):
             ],
             dim=-1,
         )
-        bs, A, T, _ = agent_feature.shape
+        bs, A, T, _ = agent_feature.shape   # 4, 49, 20: batch_size, N_agents, T_history-1
         agent_feature = agent_feature.view(bs * A, T, -1)
         valid_agent_mask = valid_mask.any(-1).flatten()
 
@@ -84,7 +84,7 @@ class AgentEncoder(nn.Module):
         x_agent[valid_agent_mask] = x_agent_tmp
         x_agent = x_agent.view(bs, A, self.dim)
 
-        if not self.use_ego_history:
+        if not self.use_ego_history:    # state dropout encoder: SDE
             ego_feature = data["current_state"][:, : self.state_channel]
             x_ego = self.ego_state_emb(ego_feature)
             x_agent[:, 0] = x_ego

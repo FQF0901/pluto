@@ -29,16 +29,16 @@ class MapEncoder(nn.Module):
         self.unknown_speed_emb = nn.Embedding(1, dim)
 
     def forward(self, data) -> torch.Tensor:
-        polygon_center = data["map"]["polygon_center"]
-        polygon_type = data["map"]["polygon_type"].long()
-        polygon_on_route = data["map"]["polygon_on_route"].long()
-        polygon_tl_status = data["map"]["polygon_tl_status"].long()
-        polygon_has_speed_limit = data["map"]["polygon_has_speed_limit"]
-        polygon_speed_limit = data["map"]["polygon_speed_limit"]
-        point_position = data["map"]["point_position"]
-        point_vector = data["map"]["point_vector"]
-        point_orientation = data["map"]["point_orientation"]
-        valid_mask = data["map"]["valid_mask"]
+        polygon_center = data["map"]["polygon_center"]  # [batch_size, N_polygons, x/y/yaw], [4, 149, 3]
+        polygon_type = data["map"]["polygon_type"].long()   # [4, 149]
+        polygon_on_route = data["map"]["polygon_on_route"].long()   # [4, 149]
+        polygon_tl_status = data["map"]["polygon_tl_status"].long() # [4, 149]
+        polygon_has_speed_limit = data["map"]["polygon_has_speed_limit"]    # [4, 149]
+        polygon_speed_limit = data["map"]["polygon_speed_limit"]    # [4, 149]
+        point_position = data["map"]["point_position"]  # [batch_size, N_polygons, 3, N_points, x/y], [4, 149, 3, 20, 2]
+        point_vector = data["map"]["point_vector"]  # [4， 149， 3， 20， 2]
+        point_orientation = data["map"]["point_orientation"]    # [4， 149， 3， 20]
+        valid_mask = data["map"]["valid_mask"]  # [4, 149, 20]
 
         if self.use_lane_boundary:
             polygon_feature = torch.cat(
@@ -73,7 +73,7 @@ class MapEncoder(nn.Module):
                 dim=-1,
             )
 
-        bs, M, P, C = polygon_feature.shape
+        bs, M, P, C = polygon_feature.shape # [batch_size, N_polygons, N_points, 10]
         valid_mask = valid_mask.view(bs * M, P)
         polygon_feature = polygon_feature.reshape(bs * M, P, C)
 

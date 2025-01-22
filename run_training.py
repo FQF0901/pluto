@@ -73,12 +73,12 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
 
         # Run training
         logger.info("Starting training...")
-        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "training"):
+        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "training"):  # 启用性能分析
             engine.trainer.fit(
                 model=engine.model,
                 datamodule=engine.datamodule,
                 ckpt_path=cfg.checkpoint,
-            )
+            )   # planner入口：调用 engine.trainer.fit 方法进行模型训练，传入模型、数据模块和检查点路径
         return engine
     if cfg.py_func == "validate":
         # Build training engine

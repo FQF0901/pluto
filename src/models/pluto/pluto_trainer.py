@@ -86,9 +86,7 @@ class LightningTrainer(pl.LightningModule):
             "val": metrics_collection.clone(prefix="val/"),
         }
 
-    def _step(
-        self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], prefix: str
-    ) -> torch.Tensor:
+    def _step(self, batch: Tuple[FeaturesType, TargetsType, ScenarioListType], prefix: str) -> torch.Tensor:
         """
         Propagates the model forward and backwards and computes/logs losses and metrics.
 

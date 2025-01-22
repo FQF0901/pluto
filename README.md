@@ -163,6 +163,16 @@ sh ./script/run_pluto_planner.sh pluto_planner nuplan mini_demo_scenario pluto_1
 
 The rendered simulation video will be saved to the specified directory (need change `/dir_to_save_the_simulation_result_video`).
 
+## Dispatcher
+```
+1. run_traing.py: engine.trainer.fit(model=engine.model, datamodule=engine.datamodule, ckpt_path=cfg.checkpoint,)
+2. custom_datamodule.py: def setup(self, stage: Optional[str] = None) -> None:
+3. pluto_trainer.py: def configure_optimizers
+4. pluto_trainer.py: def on_fit_start(self) -> None:
+5. custom_datamodule.py: def val_dataloader(self) -> torch.utils.data.DataLoader:
+6. 
+```
+
 ## To Do
 
 The code is under cleaning and will be released gradually.

@@ -183,30 +183,30 @@ class PlanningModel(TorchModuleWrapper):
         - out: 包含模型输出的字典，包括轨迹、概率和预测等信息。
         """
         # 提取代理的历史位置、方向和掩码信息。agent的[位置坐标、航向角、速度向量、感知边界框的尺寸、该帧的观察状态]
-        agent_pos = data["agent"]["position"][:, :, self.history_steps - 1] # [4, 49, 2]
-        agent_heading = data["agent"]["heading"][:, :, self.history_steps - 1]  # [4, 49]
-        agent_mask = data["agent"]["valid_mask"][:, :, : self.history_steps]    # [4, 49, 21]
+        agent_pos = data["agent"]["position"][:, :, self.history_steps - 1] # [batch_size, N_agents, T_future, x/y]: [4, 49, 101, 2] -> [4, 49, 2]
+        agent_heading = data["agent"]["heading"][:, :, self.history_steps - 1]  # [4, 49, 101] -> [4, 49]
+        agent_mask = data["agent"]["valid_mask"][:, :, : self.history_steps]    # self.history_steps=21, [4, 49, 101] -> [4, 49, 21]
         
         # 提取地图多边形中心和掩码信息
-        polygon_center = data["map"]["polygon_center"]  # [4, 149, 3]
-        polygon_mask = data["map"]["valid_mask"]    # [4, 149, 20]
+        polygon_center = data["map"]["polygon_center"]  # [batch_size, N_polygons, x/y/yaw], [4, 149, 3]
+        polygon_mask = data["map"]["valid_mask"]    # [batch_size, N_polygons, N_points], [4, 149, 20]
 
         # 获取批次大小和代理数量
         bs, A = agent_pos.shape[0:2]    # 4, 49
 
         # 合并代理位置和多边形中心，合并代理方向和多边形方向，并进行角度归一化
-        position = torch.cat([agent_pos, polygon_center[..., :2]], dim=1)   # [4, 198, 2]
-        angle = torch.cat([agent_heading, polygon_center[..., 2]], dim=1)   # [4, 198]
+        position = torch.cat([agent_pos, polygon_center[..., :2]], dim=1)   # [batch_size, N_agents+N_polygons, x/y] -> [4, 198, 2]
+        angle = torch.cat([agent_heading, polygon_center[..., 2]], dim=1)   # [batch_size, N_agents+N_polygons, yaw] -> [4, 198]
         angle = (angle + math.pi) % (2 * math.pi) - math.pi # [4, 198]
         pos = torch.cat([position, angle.unsqueeze(-1)], dim=-1)    # [4, 198, 3]
 
         # 计算代理和多边形的有效掩码
-        agent_key_padding = ~(agent_mask.any(-1))   # [4, 49]
-        polygon_key_padding = ~(polygon_mask.any(-1))   # [4, 149]
-        key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)  # [4, 198]
+        agent_key_padding = ~(agent_mask.any(-1))   # [batch_size, N_agents], [4, 49]
+        polygon_key_padding = ~(polygon_mask.any(-1))   # [batch_size, N_polygons], [4, 149]
+        key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)  # [batch_size, N_agents+N_polygons], [4, 198]
 
         # 使用编码器分别对代理、地图多边形和静态物体进行编码
-        x_agent = self.agent_encoder(data)  # FPN: [4, 49, 128]: [batch_size, n_agent, dim]
+        x_agent = self.agent_encoder(data)  # FPN: [4, 49, 128]: [batch_size, n_agents, dim]
         x_polygon = self.map_encoder(data)  # PointNet: [4, 149, 128]
         x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # MLP: [4, 17, 128], [4, 17, 3], [4, 17]。static obj的[位置坐标、航向角、感知边界框的尺寸]
 
