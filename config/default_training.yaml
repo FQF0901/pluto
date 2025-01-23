@@ -1,11 +1,11 @@
 # YAML（YAML Ain't Markup Language）是一种简洁易读的数据序列化格式，常用于配置文件。
 # 它通过缩进表示层级关系，支持键值对、列表等数据结构，广泛应用于各种编程语言中
 
-hydra:
+hydra:  # Hydra 是一个强大的配置管理库，用于简化 Python 应用程序的配置管理。它允许用户通过 YAML 文件定义配置
   run:
     dir: ${output_dir}  # 指定了Hydra运行时的工作目录为 ${output_dir}
   output_subdir: ${output_dir}/code/hydra           # Store hydra's config breakdown here for debugging。指定了Hydra配置分解存储的子目录为 ${output_dir}/code/hydra，用于调试
-  searchpath:                                       # Only <exp_dir> in these paths are discoverable。searchpath 列出了多个包路径，确保这些路径中的实验配置文件可被发现和加载
+  searchpath:                                       # Only <exp_dir> in these paths are discoverable。searchpath 列出了多个包路径，确保特定路径中的配置文件可以被发现和加载，这对于模块化配置非常有用
     - pkg://nuplan.planning.script.config.common
     - pkg://nuplan.planning.script.config.training
     - pkg://nuplan.planning.script.experiments      # Put experiments configs in script/experiments/<exp_dir>
@@ -18,7 +18,7 @@ defaults: # 引用了默认的实验和通用配置
   - default_common
 
   # Trainer and callbacks。使用自定义的Lightning训练器和默认的回调函数
-  - lightning: custom_lightning # 会被onfig/training/train_pluto.yaml给override
+  - lightning: custom_lightning # 会被config/training/train_pluto.yaml给override
   - callbacks: default_callbacks
 
   # Optimizer settings。支持Adam和AdamW优化器，默认不使用学习率调度器和预热学习率调度器
@@ -28,19 +28,19 @@ defaults: # 引用了默认的实验和通用配置
 
   # Data Loading。使用默认的数据加载器，分隔符未指定
   - data_loader: default_data_loader
-  - splitter: ??? # 会被onfig/training/train_pluto.yaml给
+  - splitter: ??? # 会被config/training/train_pluto.yaml给override
 
   # Objectives and metrics。定义了目标、训练评估指标、数据增强及其调度器、场景类型权重等，默认不使用数据增强
   - objective:
   - training_metric:
-  - data_augmentation: null # 会被onfig/training/train_pluto.yaml给
+  - data_augmentation: null # 会被config/training/train_pluto.yaml给override
   - data_augmentation_scheduler: null  # [default_augmentation_schedulers, stepwise_augmentation_probability_scheduler, stepwise_noise_parameter_scheduler] supported data augmentation schedulers
   - scenario_type_weights: default_scenario_type_weights
-  - custom_trainer: null  # 自定义训练器：未指定自定义训练器。 会被onfig/training/train_pluto.yaml给
+  - custom_trainer: null  # 自定义训练器：未指定自定义训练器。 会被config/training/train_pluto.yaml给override
 
 nuplan_trainer: false # 表示是否启用Nuplan训练器，当前设置为不启用
 experiment_name: 'training' # 指定实验名称为“training”
-objective_aggregate_mode: ??? # How to aggregate multiple objectives, can be 'mean', 'max', 'sum'。会被onfig/training/train_pluto.yaml给
+objective_aggregate_mode: ??? # How to aggregate multiple objectives, can be 'mean', 'max', 'sum'。会被config/training/train_pluto.yaml给override
 
 # Cache parameters
 cache:
@@ -50,7 +50,7 @@ cache:
   cleanup_cache: false                                # Cleanup cached data in the cache_path, this ensures that new data are generated if the same cache_path is passed
 
 # Mandatory parameters
-py_func: ???  # Function to be run inside main (can be "train", "test", "cache")。会被onfig/training/train_pluto.yaml给
+py_func: ???  # Function to be run inside main (can be "train", "test", "cache")。会被config/training/train_pluto.yaml给override
 epochs: 25  # 训练的总轮数为25
 warmup_epochs: 3  # 预热轮数为3
 lr: 1e-3

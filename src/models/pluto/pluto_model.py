@@ -182,7 +182,7 @@ class PlanningModel(TorchModuleWrapper):
         返回:
         - out: 包含模型输出的字典，包括轨迹、概率和预测等信息。
         """
-        # 提取代理的历史位置、方向和掩码信息。agent的[位置坐标、航向角、速度向量、感知边界框的尺寸、该帧的观察状态]
+        # 1.1 为了PE提取agent的当前位、方向和掩码信息。agent的[位置坐标、航向角、速度向量、感知边界框的尺寸、该帧的观察状态]
         agent_pos = data["agent"]["position"][:, :, self.history_steps - 1] # [batch_size, N_agents, T_future, x/y]: [4, 49, 101, 2] -> [4, 49, 2]
         agent_heading = data["agent"]["heading"][:, :, self.history_steps - 1]  # [4, 49, 101] -> [4, 49]
         agent_mask = data["agent"]["valid_mask"][:, :, : self.history_steps]    # self.history_steps=21, [4, 49, 101] -> [4, 49, 21]
@@ -205,7 +205,7 @@ class PlanningModel(TorchModuleWrapper):
         polygon_key_padding = ~(polygon_mask.any(-1))   # [batch_size, N_polygons], [4, 149]
         key_padding_mask = torch.cat([agent_key_padding, polygon_key_padding], dim=-1)  # [batch_size, N_agents+N_polygons], [4, 198]
 
-        # 使用编码器分别对代理、地图多边形和静态物体进行编码
+        # 1.2 使用编码器分别对代理、地图多边形和静态物体进行编码
         x_agent = self.agent_encoder(data)  # FPN: [4, 49, 128]: [batch_size, n_agents, dim]
         x_polygon = self.map_encoder(data)  # PointNet: [4, 149, 128]
         x_static, static_pos, static_key_padding = self.static_objects_encoder(data)    # MLP: [4, 17, 128], [4, 17, 3], [4, 17]。static obj的[位置坐标、航向角、感知边界框的尺寸]
@@ -213,23 +213,23 @@ class PlanningModel(TorchModuleWrapper):
         # 合并所有编码后的特征，为啥没有自车？
         x = torch.cat([x_agent, x_polygon, x_static], dim=1)    # [4, 215, 128]
 
-        # 合并位置信息和静态物体位置信息，并生成位置嵌入
+        # 合并位置信息和静态物体位置信息，并生成PE
         pos = torch.cat([pos, static_pos], dim=1)   # [4, 215, 3]
         pos_embed = self.pos_emb(pos)   # [4, 215, 128]
 
-        # 合并所有掩码信息
+        # 1.3 合并所有掩码信息
         key_padding_mask = torch.cat([key_padding_mask, static_key_padding], dim=-1)    # [4, 215]
         x = x + pos_embed   # [4, 215, 128] + [4, 215, 128] = [4, 215, 128]
 
-        # 通过编码器块进行进一步处理
+        # 2. 通过编码器块进行进一步处理
         for blk in self.encoder_blocks:
             x = blk(x, key_padding_mask=key_padding_mask, return_attn_weights=False)
         x = self.norm(x)    # [4, 215, 128]
 
-        # 使用代理预测器对代理的未来位置进行预测
+        # 3. 使用代理预测器对代理的未来位置进行预测
         prediction = self.agent_predictor(x[:, 1:A])    # A=49, prediction:[4, 48, 80, 6]貌似[batch_size, n_agent-1, T_future, dim_mod]
 
-        # 检查是否有可用的参考线
+        # 4. 检查是否有可用的参考线
         ref_line_available = data["reference_line"]["position"].shape[1] > 0    # true
 
         # 如果有可用的参考线，则使用规划解码器生成轨迹和概率
@@ -238,7 +238,7 @@ class PlanningModel(TorchModuleWrapper):
         else:
             trajectory, probability = None, None
 
-        # 构建输出字典
+        # 5. 构建输出字典
         out = {
             "trajectory": trajectory,   # [4, 3, 12, 80, 6]
             "probability": probability,  # (bs, R, M): [4, 3, 12]

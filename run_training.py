@@ -38,8 +38,11 @@ CONFIG_PATH = "./config"
 CONFIG_NAME = "default_training"
 
 
+# Hydra 是一个强大的配置管理库，用于简化 Python 应用程序的配置管理。它允许用户通过 YAML 文件定义配置
 @hydra.main(config_path=CONFIG_PATH, config_name=CONFIG_NAME)   # Hydra库的装饰器@hydra.main：指定配置文件的路径和名称，作为参数传递给主函数
-def main(cfg: DictConfig) -> Optional[TrainingEngine]:
+# cfg 是一个配置对象，通常使用 OmegaConf 库来管理。它是一个包含实验或训练所需的各种参数和设置的字典结构
+# Optional 是 Python 标准库 typing 模块中的一个类型提示工具。它表示某个变量可以是指定的类型，也可以是 None
+def main(cfg: DictConfig) -> Optional[TrainingEngine]:  
     """
     Main entrypoint for training/validation experiments.
     :param cfg: omegaconf dictionary
@@ -73,12 +76,12 @@ def main(cfg: DictConfig) -> Optional[TrainingEngine]:
 
         # Run training
         logger.info("Starting training...")
-        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "training"):  # 启用性能分析
+        with ProfilerContextManager(cfg.output_dir, cfg.enable_profiling, "training"):
             engine.trainer.fit(
                 model=engine.model,
                 datamodule=engine.datamodule,
                 ckpt_path=cfg.checkpoint,
-            )   # planner入口：调用 engine.trainer.fit 方法进行模型训练，传入模型、数据模块和检查点路径
+            )
         return engine
     if cfg.py_func == "validate":
         # Build training engine
