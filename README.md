@@ -171,6 +171,12 @@ The rendered simulation video will be saved to the specified directory (need cha
 4. pluto_trainer.py: def on_fit_start(self) -> None:
 5. custom_datamodule.py: def val_dataloader(self) -> torch.utils.data.DataLoader:
 6. 
+
+...
+
+7.pluto_trainer.py:  res = self.forward(features["feature"].data)
+8.pluto_trainer.py: def forward(self, features: FeaturesType) -> TargetsType:
+9. pluto_model.py: def forward(self, data):
 ```
 
 ## To Do

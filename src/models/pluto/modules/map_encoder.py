@@ -73,7 +73,7 @@ class MapEncoder(nn.Module):
                 dim=-1,
             )
 
-        bs, M, P, C = polygon_feature.shape # [batch_size, N_polygons, N_points, 10]
+        bs, M, P, C = polygon_feature.shape # [batch_size, N_polygons, N_points=20, 10]，具体见pluto_feature_builder.py的def _get_map_features()
         valid_mask = valid_mask.view(bs * M, P)
         polygon_feature = polygon_feature.reshape(bs * M, P, C)
 
@@ -88,6 +88,6 @@ class MapEncoder(nn.Module):
         )
         x_speed_limit[~polygon_has_speed_limit] = self.unknown_speed_emb.weight
 
-        x_polygon += x_type + x_on_route + x_tl_status + x_speed_limit
+        x_polygon += x_type + x_on_route + x_tl_status + x_speed_limit  # [batch_size, N_polygons, dim=128]
 
         return x_polygon

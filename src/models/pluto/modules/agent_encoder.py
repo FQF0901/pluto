@@ -91,7 +91,7 @@ class AgentEncoder(nn.Module):
 
         x_type = self.type_emb(category)
 
-        return x_agent + x_type
+        return x_agent + x_type # [4, 49, 128] + [4, 49, 128]
 
 
 class StateAttentionEncoder(nn.Module):

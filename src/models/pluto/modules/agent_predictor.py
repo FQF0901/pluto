@@ -19,9 +19,9 @@ class AgentPredictor(nn.Module):
         x: (bs, N, dim)
         """
 
-        bs, N, _ = x.shape
+        bs, N, _ = x.shape  # batch size, N_agents, dim=128
 
-        loc = self.loc_predictor(x).view(bs, N, self.future_steps, 2)
+        loc = self.loc_predictor(x).view(bs, N, self.future_steps, 2)   # 并将结果重新调整为形状为 (bs, N, self.future_steps, 2) 的张量
         yaw = self.yaw_predictor(x).view(bs, N, self.future_steps, 2)
         vel = self.vel_predictor(x).view(bs, N, self.future_steps, 2)
 

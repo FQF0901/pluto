@@ -542,9 +542,23 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
         radius: float,
         sample_points: int = 20,
     ):
+        """
+        根据给定的位置和路线信息，获取地图特征。
+
+        :param map_api: 地图API，用于获取地图对象。
+        :param query_xy: 查询位置的二维坐标。
+        :param route_roadblock_ids: 路线上的路障ID列表。
+        :param traffic_light_status: 交通灯状态列表。
+        :param radius: 查询半径。
+        :param sample_points: 采样点数量，默认为20。
+        :return: 地图特征字典和对象ID列表。
+        """
+        # 将路线上的路障ID转换为整数集
         route_ids = set(int(route_id) for route_id in route_roadblock_ids)
+        # 创建交通灯状态字典，键为车道连接器ID，值为交通灯状态
         tls = {tl.lane_connector_id: tl.status for tl in traffic_light_status}
 
+        # 获取查询位置附近的地图对象，包括车道、车道连接器和人行横道
         map_objects = map_api.get_proximal_map_objects(
             query_xy,
             radius,
@@ -554,12 +568,15 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
                 SemanticMapLayer.CROSSWALK,
             ],
         )
+        # 合并车道和车道连接器对象
         lane_objects = (
             map_objects[SemanticMapLayer.LANE]
             + map_objects[SemanticMapLayer.LANE_CONNECTOR]
         )
+        # 获取人行横道对象
         crosswalk_objects = map_objects[SemanticMapLayer.CROSSWALK]
 
+        # 为所有地图对象生成ID列表和类型列表
         object_ids = [int(obj.id) for obj in lane_objects + crosswalk_objects]
         object_types = (
             [SemanticMapLayer.LANE] * len(map_objects[SemanticMapLayer.LANE])
@@ -569,7 +586,8 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
             * len(map_objects[SemanticMapLayer.CROSSWALK])
         )
 
-        M, P = len(lane_objects) + len(crosswalk_objects), sample_points
+        # 初始化地图特征数组
+        M, P = len(lane_objects) + len(crosswalk_objects), sample_points    # N_polygons, N_points=20
         point_position = np.zeros((M, 3, P, 2), dtype=np.float64)
         point_vector = np.zeros((M, 3, P, 2), dtype=np.float64)
         point_side = np.zeros((M, 3), dtype=np.int8)
@@ -584,29 +602,25 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
         polygon_has_speed_limit = np.zeros(M, dtype=np.bool)
         polygon_road_block_id = np.zeros(M, dtype=np.int32)
 
+        # 处理每个车道对象
         for lane in lane_objects:
             object_id = int(lane.id)
             idx = object_ids.index(object_id)
             speed_limit = lane.speed_limit_mps
 
-            centerline = self._sample_discrete_path(
-                lane.baseline_path.discrete_path, sample_points + 1
-            )
-            left_bound = self._sample_discrete_path(
-                lane.left_boundary.discrete_path, sample_points + 1
-            )
-            right_bound = self._sample_discrete_path(
-                lane.right_boundary.discrete_path, sample_points + 1
-            )
+            # 采样车道的中心线、左边界和右边界
+            centerline = self._sample_discrete_path(lane.baseline_path.discrete_path, sample_points + 1)
+            left_bound = self._sample_discrete_path(lane.left_boundary.discrete_path, sample_points + 1)
+            right_bound = self._sample_discrete_path(lane.right_boundary.discrete_path, sample_points + 1)
             edges = np.stack([centerline, left_bound, right_bound], axis=0)
 
+            # 计算点的位置和方向向量
             point_vector[idx] = edges[:, 1:] - edges[:, :-1]
             point_position[idx] = edges[:, :-1]
-            point_orientation[idx] = np.arctan2(
-                point_vector[idx, :, :, 1], point_vector[idx, :, :, 0]
-            )
+            point_orientation[idx] = np.arctan2(point_vector[idx, :, :, 1], point_vector[idx, :, :, 0] )
             point_side[idx] = np.arange(3)
 
+            # 计算多边形的中心、位置和方向
             polygon_center[idx] = np.concatenate(
                 [
                     centerline[int(sample_points / 2)],
@@ -618,15 +632,12 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
             polygon_orientation[idx] = point_orientation[idx, 0, 0]
             polygon_type[idx] = self.polygon_types.index(object_types[idx])
             polygon_on_route[idx] = int(lane.get_roadblock_id()) in route_ids
-            polygon_tl_status[idx] = (
-                tls[object_id] if object_id in tls else TrafficLightStatusType.UNKNOWN
-            )
+            polygon_tl_status[idx] = (tls[object_id] if object_id in tls else TrafficLightStatusType.UNKNOWN)
             polygon_has_speed_limit[idx] = speed_limit is not None
-            polygon_speed_limit[idx] = (
-                lane.speed_limit_mps if lane.speed_limit_mps else 0
-            )
+            polygon_speed_limit[idx] = (lane.speed_limit_mps if lane.speed_limit_mps else 0)
             polygon_road_block_id[idx] = int(lane.get_roadblock_id())
 
+        # 处理每个人行横道对象
         for crosswalk in crosswalk_objects:
             idx = object_ids.index(int(crosswalk.id))
             edges = self._get_crosswalk_edges(crosswalk)
@@ -650,6 +661,7 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
             polygon_tl_status[idx] = TrafficLightStatusType.UNKNOWN
             polygon_has_speed_limit[idx] = False
 
+        # 将所有地图特征整理为字典
         map_features = {
             "point_position": point_position,
             "point_vector": point_vector,
@@ -666,6 +678,7 @@ class PlutoFeatureBuilder(AbstractFeatureBuilder):
             "polygon_road_block_id": polygon_road_block_id,
         }
 
+        # 返回地图特征和对象ID
         return map_features, object_ids
 
     def _get_reference_line_feature(

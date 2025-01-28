@@ -96,7 +96,7 @@ class LightningTrainer(pl.LightningModule):
         :param prefix: prefix prepended at each artifact's name during logging
         :return: model's scalar loss
         """
-        features, targets, scenarios = batch
+        features, targets, scenarios = batch    # pluto_feature_builder.py里的get_features_from_XXX()
         res = self.forward(features["feature"].data)    # pluto net: res包含trajectory, probaility, prediction, output_prediction, output_trajectory, candidate_trajectories
 
         losses = self._compute_objectives(res, features["feature"].data)    # cal loss
