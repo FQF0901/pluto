@@ -72,6 +72,15 @@ class LightningTrainer(pl.LightningModule):
             self.collision_loss = ESDFCollisionLoss()
 
     def on_fit_start(self) -> None:
+        """
+        在训练开始时初始化和准备度量标准集合。
+        
+        此方法在训练开始前调用，用于设置整个训练和验证过程中使用的度量标准。
+        它创建了一个度量标准集合，包括多个不同的度量标准实例，这些实例用于评估模型的性能。
+        每个度量标准都移动到当前设备上，以确保它们可以高效地处理数据。
+        最后，它为训练和验证阶段分别克隆这些度量标准集合，并为每个集合中的度量标准添加前缀，以便于区分和跟踪。
+        """
+        # 创建一个包含多个度量标准的集合，用于评估模型性能
         metrics_collection = MetricCollection(
             [
                 minADE().to(self.device),
@@ -81,6 +90,8 @@ class LightningTrainer(pl.LightningModule):
                 PredAvgFDE().to(self.device),
             ]
         )
+        
+        # 为训练和验证阶段分别克隆度量标准集合，并添加相应前缀
         self.metrics = {
             "train": metrics_collection.clone(prefix="train/"),
             "val": metrics_collection.clone(prefix="val/"),
@@ -396,16 +407,18 @@ class LightningTrainer(pl.LightningModule):
         """
         return self.model(features)
 
-    def configure_optimizers(
-        self,
-    ) -> Union[Optimizer, Dict[str, Union[Optimizer, _LRScheduler]]]:
+    def configure_optimizers(self,) -> Union[Optimizer, Dict[str, Union[Optimizer, _LRScheduler]]]:
         """
-        Configures the optimizers and learning schedules for the training.
+        配置训练所需的优化器和学习率调度器。
 
-        :return: optimizer or dictionary of optimizers and schedules
+        :return: 优化器或包含优化器和调度器的字典
         """
+        
+        # 初始化需要进行权重衰减和不需要进行权重衰减的参数集合
         decay = set()
         no_decay = set()
+
+        # 定义允许权重衰减的模块类型
         whitelist_weight_modules = (
             nn.Linear,
             nn.Conv1d,
@@ -415,6 +428,8 @@ class LightningTrainer(pl.LightningModule):
             nn.LSTM,
             nn.GRU,
         )
+
+        # 定义不允许权重衰减的模块类型
         blacklist_weight_modules = (
             nn.BatchNorm1d,
             nn.BatchNorm2d,
@@ -423,11 +438,11 @@ class LightningTrainer(pl.LightningModule):
             nn.LayerNorm,
             nn.Embedding,
         )
+
+        # 遍历所有模块及其参数，根据规则将参数分为需要权重衰减和不需要权重衰减两类
         for module_name, module in self.named_modules():
             for param_name, param in module.named_parameters():
-                full_param_name = (
-                    "%s.%s" % (module_name, param_name) if module_name else param_name
-                )
+                full_param_name = ("%s.%s" % (module_name, param_name) if module_name else param_name)
                 if "bias" in param_name:
                     no_decay.add(full_param_name)
                 elif "weight" in param_name:
@@ -437,14 +452,17 @@ class LightningTrainer(pl.LightningModule):
                         no_decay.add(full_param_name)
                 elif not ("weight" in param_name or "bias" in param_name):
                     no_decay.add(full_param_name)
-        param_dict = {
-            param_name: param for param_name, param in self.named_parameters()
-        }
+
+        # 创建一个字典，键为参数名称，值为参数本身
+        param_dict = {param_name: param for param_name, param in self.named_parameters()}
+
+        # 检查是否有参数同时出现在需要和不需要权重衰减的集合中
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert len(inter_params) == 0
-        assert len(param_dict.keys() - union_params) == 0
+        assert len(inter_params) == 0, "存在参数同时被添加到decay和no_decay集合中"
+        assert len(param_dict.keys() - union_params) == 0, "有参数未被正确分类"
 
+        # 构建优化器参数组，分为需要权重衰减和不需要权重衰减两组
         optim_groups = [
             {
                 "params": [
@@ -460,12 +478,10 @@ class LightningTrainer(pl.LightningModule):
             },
         ]
 
-        # Get optimizer
-        optimizer = torch.optim.AdamW(
-            optim_groups, lr=self.lr, weight_decay=self.weight_decay
-        )
+        # 创建AdamW优化器
+        optimizer = torch.optim.AdamW(optim_groups, lr=self.lr, weight_decay=self.weight_decay)
 
-        # Get lr_scheduler
+        # 创建学习率调度器
         scheduler = WarmupCosLR(
             optimizer=optimizer,
             lr=self.lr,

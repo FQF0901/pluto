@@ -75,15 +75,23 @@ def update_config_for_training(cfg: DictConfig) -> None:
 
 @dataclass(frozen=True)
 class TrainingEngine:
-    """Lightning training engine dataclass wrapping the lightning trainer, model and datamodule."""
+    """
+    Lightning 训练引擎数据类，封装了 PyTorch Lightning 的训练器、模型和数据模块。
+    该数据类用于将训练所需的组件（包括训练器、模型和数据模块）组合在一起，
+    并确保这些组件一旦设置后不可变，从而提高训练过程的稳定性和可预测性。
+    """
 
-    trainer: pl.Trainer  # Trainer for models
-    model: pl.LightningModule  # Module describing NN model, loss, metrics, visualization
-    datamodule: pl.LightningDataModule  # Loading data
+    trainer: pl.Trainer # 训练器，负责协调训练过程
+
+    model: pl.LightningModule   # 模型模块，描述神经网络模型、损失函数、评估指标和可视化，封装了模型的行为
+
+    datamodule: pl.LightningDataModule  # 数据模块，提供加载和预处理数据的灵活接口
 
     def __repr__(self) -> str:
         """
-        :return: String representation of class without expanding the fields.
+        返回类实例的字符串表示，不展开字段。
+
+        :return: 类实例的简洁字符串表示，包含模块名、类名和内存地址。
         """
         return f"<{type(self).__module__}.{type(self).__qualname__} object at {hex(id(self))}>"
 
@@ -178,13 +186,16 @@ def build_lightning_module(
 
 def build_custom_trainer(cfg: DictConfig) -> pl.Trainer:
     """
-    Builds the lightning trainer from the config.
-    :param cfg: omegaconf dictionary
-    :return: built object.
+    根据配置callbacks和training_logger以构建 pl.Trainer 训练器。
+    
+    :param cfg: 包含配置信息的 omegaconf 字典
+    :return: 构建的训练器对象
     """
+
+    # 从配置中提取训练器参数
     params = cfg.lightning.trainer.params
 
-    # callbacks = build_callbacks(cfg)
+    # 初始化回调函数列表，包括模型检查点、模型摘要、进度条和学习率监控
     callbacks = [
         ModelCheckpoint(
             dirpath=os.path.join(os.getcwd(), "checkpoints"),
@@ -199,7 +210,9 @@ def build_custom_trainer(cfg: DictConfig) -> pl.Trainer:
         LearningRateMonitor(logging_interval="epoch"),
     ]
 
+    # 根据配置选择合适的日志记录器
     if cfg.wandb.mode == "disable":
+        # 如果禁用 wandb，则使用 TensorBoardLogger 进行日志记录
         training_logger = TensorBoardLogger(
             save_dir=cfg.group,
             name=cfg.experiment,
@@ -208,6 +221,7 @@ def build_custom_trainer(cfg: DictConfig) -> pl.Trainer:
             prefix="",
         )
     else:
+        # 如果启用了 wandb，并且有指定的 artifact，则下载并设置 checkpoint 和 run_id
         if cfg.wandb.artifact is not None:
             os.system(f"wandb artifact get {cfg.wandb.artifact}")
             _, _, artifact = cfg.wandb.artifact.split("/")
@@ -216,6 +230,7 @@ def build_custom_trainer(cfg: DictConfig) -> pl.Trainer:
             cfg.checkpoint = checkpoint
             cfg.wandb.run_id = run_id
 
+        # 使用 WandbLogger 进行日志记录，并根据配置决定是否恢复训练
         training_logger = WandbLogger(
             save_dir=cfg.group,
             project=cfg.wandb.project,
@@ -226,6 +241,7 @@ def build_custom_trainer(cfg: DictConfig) -> pl.Trainer:
             id=cfg.wandb.run_id,
         )
 
+    # 创建并返回训练器实例
     trainer = pl.Trainer(
         callbacks=callbacks,
         logger=training_logger,

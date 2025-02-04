@@ -173,20 +173,25 @@ class CustomDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """
-        Set up the dataset for each target set depending on the training stage.
-        This is called by every process in distributed training.
-        :param stage: Stage of training, can be "fit" or "test".
+        根据训练阶段设置数据集。
+        此方法会在分布式训练中的每个进程中被调用。
+
+        :param stage: 训练阶段，可以是 "fit" 或 "test"。
         """
+
+        # 如果阶段为空，则直接返回
         if stage is None:
             return
 
+        # 处理训练和验证阶段
         if stage == "fit":
-            # Training Dataset
+            # 设置训练数据集
             train_samples = self._splitter.get_train_samples(
                 self._all_samples, self._worker
             )
             assert len(train_samples) > 0, "Splitter returned no training samples"
 
+            # 创建训练数据集
             self._train_set = create_dataset(
                 train_samples,
                 self._feature_preprocessor,
@@ -195,41 +200,49 @@ class CustomDataModule(pl.LightningDataModule):
                 self._augmentors,
             )
 
-            # Validation Dataset
+            # 设置验证数据集
             val_samples = self._splitter.get_val_samples(
                 self._all_samples, self._worker
             )
             assert len(val_samples) > 0, "Splitter returned no validation samples"
 
+            # 创建验证数据集
             self._val_set = create_dataset(
                 val_samples,
                 self._feature_preprocessor,
                 self._val_fraction,
                 "validation",
             )
+
+        # 处理单独验证阶段
         elif stage == "validate":
-            # Validation Dataset
+            # 设置验证数据集
             val_samples = self._splitter.get_val_samples(
                 self._all_samples, self._worker
             )
             assert len(val_samples) > 0, "Splitter returned no validation samples"
 
+            # 创建验证数据集
             self._val_set = create_dataset(
                 val_samples,
                 self._feature_preprocessor,
                 self._val_fraction,
                 "validation",
             )
+
+        # 处理测试阶段
         elif stage == "test":
-            # Testing Dataset
+            # 设置测试数据集
             test_samples = self._splitter.get_test_samples(
                 self._all_samples, self._worker
             )
             assert len(test_samples) > 0, "Splitter returned no test samples"
 
+            # 创建测试数据集
             self._test_set = create_dataset(
                 test_samples, self._feature_preprocessor, self._test_fraction, "test"
             )
+
         else:
             raise ValueError(f'Stage must be one of ["fit", "test"], got ${stage}.')
 
