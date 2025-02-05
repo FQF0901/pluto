@@ -205,7 +205,52 @@ def build_custom_trainer(cfg: DictConfig) -> pl.Trainer:
             save_top_k=cfg.lightning.trainer.checkpoint.save_top_k,
             save_last=True,
         ),
-        RichModelSummary(max_depth=1),
+
+        # PyTorch Lightning 提供的一个回调，它会在训练开始时打印出模型的结构和参数统计信息。max_depth=1 参数指定了只显示一层子模块的信息，这与你提供的输出格式相匹配
+        # ┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+        # ┃    ┃ Name                                     ┃ Type                    ┃ Params ┃
+        # ┡━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+        # │ 0  │ model                                    │ PlanningModel           │  4.1 M │
+        # │ 1  │ model.pos_emb                            │ FourierEmbedding        │  117 K │
+        # │ 2  │ model.pos_emb.freqs                      │ Embedding               │    192 │
+        # │ 3  │ model.pos_emb.mlps                       │ ModuleList              │  100 K │
+        # │ 4  │ model.pos_emb.to_out                     │ Sequential              │ 16.8 K │
+        # │ 5  │ model.agent_encoder                      │ AgentEncoder            │  672 K │
+        # │ 6  │ model.agent_encoder.history_encoder      │ NATSequenceEncoder      │  603 K │
+        # │ 7  │ model.agent_encoder.ego_state_emb        │ StateAttentionEncoder   │ 68.5 K │
+        # │ 8  │ model.agent_encoder.type_emb             │ Embedding               │    512 │
+        # │ 9  │ model.map_encoder                        │ MapEncoder              │  250 K │
+        # │ 10 │ model.map_encoder.polygon_encoder        │ PointsEncoder           │  199 K │
+        # │ 11 │ model.map_encoder.speed_limit_emb        │ FourierEmbedding        │ 50.2 K │
+        # │ 12 │ model.map_encoder.type_emb               │ Embedding               │    384 │
+        # │ 13 │ model.map_encoder.on_route_emb           │ Embedding               │    256 │
+        # │ 14 │ model.map_encoder.traffic_light_emb      │ Embedding               │    512 │
+        # │ 15 │ model.map_encoder.unknown_speed_emb      │ Embedding               │    128 │
+        # │ 16 │ model.static_objects_encoder             │ StaticObjectsEncoder    │ 84.2 K │
+        # │ 17 │ model.static_objects_encoder.obj_encoder │ FourierEmbedding        │ 83.7 K │
+        # │ 18 │ model.static_objects_encoder.type_emb    │ Embedding               │    512 │
+        # │ 19 │ model.encoder_blocks                     │ ModuleList              │  793 K │
+        # │ 20 │ model.encoder_blocks.0                   │ TransformerEncoderLayer │  198 K │
+        # │ 21 │ model.encoder_blocks.1                   │ TransformerEncoderLayer │  198 K │
+        # │ 22 │ model.encoder_blocks.2                   │ TransformerEncoderLayer │  198 K │
+        # │ 23 │ model.encoder_blocks.3                   │ TransformerEncoderLayer │  198 K │
+        # │ 24 │ model.norm                               │ LayerNorm               │    256 │
+        # │ 25 │ model.agent_predictor                    │ AgentPredictor          │  223 K │
+        # │ 26 │ model.agent_predictor.loc_predictor      │ MLPLayer                │ 74.7 K │
+        # │ 27 │ model.agent_predictor.yaw_predictor      │ MLPLayer                │ 74.7 K │
+        # │ 28 │ model.agent_predictor.vel_predictor      │ MLPLayer                │ 74.7 K │
+        # │ 29 │ model.planning_decoder                   │ PlanningDecoder         │  1.9 M │
+        # │ 30 │ model.planning_decoder.decoder_blocks    │ ModuleList              │  1.3 M │
+        # │ 31 │ model.planning_decoder.r_pos_emb         │ FourierEmbedding        │  117 K │
+        # │ 32 │ model.planning_decoder.r_encoder         │ PointsEncoder           │  198 K │
+        # │ 33 │ model.planning_decoder.q_proj            │ Linear                  │ 32.9 K │
+        # │ 34 │ model.planning_decoder.loc_head          │ MLPLayer                │ 74.7 K │
+        # │ 35 │ model.planning_decoder.yaw_head          │ MLPLayer                │ 74.7 K │
+        # │ 36 │ model.planning_decoder.vel_head          │ MLPLayer                │ 74.7 K │
+        # │ 37 │ model.planning_decoder.pi_head           │ MLPLayer                │ 16.9 K │
+        # │ 38 │ collision_loss                           │ ESDFCollisionLoss       │      0 │
+        # └────┴──────────────────────────────────────────┴─────────────────────────┴────────┘
+        RichModelSummary(max_depth=3),  
         RichProgressBar(),
         LearningRateMonitor(logging_interval="epoch"),
     ]
