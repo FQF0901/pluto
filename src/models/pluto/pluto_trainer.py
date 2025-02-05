@@ -440,7 +440,14 @@ class LightningTrainer(pl.LightningModule):
         )
 
         # 遍历所有模块及其参数，根据规则将参数分为需要权重衰减和不需要权重衰减两类
+        # self.named_modules() 是 PyTorch 中 torch.nn.Module 类的一个方法，它会返回模型中所有模块的名称和对应的模块对象
+        # 代码中，LightningTrainer 类继承自 pl.LightningModule，而 pl.LightningModule 又继承自 torch.nn.Module。因此，LightningTrainer 也继承了 named_modules() 方法
+        # 具体来说，self.named_modules() 返回一个生成器，遍历模型中的所有子模块（包括嵌套的子模块），并返回每个子模块的名称和模块对象。这对于遍历和操作模型中的各个部分非常有用，例如在你提供的代码中用于区分需要权重衰减和不需要权重衰减的参数
+        # 返回值：一个生成器，每次迭代返回一个包含两个元素的元组 (name, module)，其中 name 是模块的名称，module 是模块对象
         for module_name, module in self.named_modules():
+            # module.named_parameters() 是 PyTorch 中 torch.nn.Module 类的一个方法，用于返回模块及其所有子模块中的参数（Parameter 对象）的名称和对应的参数对象
+            # 返回值：一个生成器，每次迭代返回一个包含两个元素的元组 (name参数的全名, param参数对象，类型为 torch.nn.Parameter)
+            # 这个方法在处理模型参数时非常有用，特别是在需要对不同类型的参数进行不同的操作时，例如应用不同的权重衰减、初始化或冻结某些层的参数
             for param_name, param in module.named_parameters():
                 full_param_name = ("%s.%s" % (module_name, param_name) if module_name else param_name)
                 if "bias" in param_name:
