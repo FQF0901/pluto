@@ -470,6 +470,16 @@ class LightningTrainer(pl.LightningModule):
         assert len(param_dict.keys() - union_params) == 0, "有参数未被正确分类"
 
         # 构建优化器参数组，分为需要权重衰减和不需要权重衰减两组
+        # optim_groups 是一个包含参数分组的列表，用于配置优化器时将模型参数分为不同的组，并为每个组设置不同的超参数（如权重衰减）。
+        # 这种做法在深度学习中非常常见，特别是在处理不同类型的参数时（例如权重和偏置），可以更精细地控制优化过程
+
+        # "params"：这是一个参数列表，包含属于该分组的所有参数。具体来说：
+        # 第一个分组包含所有需要权重衰减的参数（即 decay 集合中的参数）。
+        # 第二个分组包含所有不需要权重衰减的参数（即 no_decay 集合中的参数）。
+
+        # "weight_decay"：这是该分组的权重衰减系数。具体来说：
+        # 对于第一个分组，权重衰减系数是 self.weight_decay，表示这些参数会应用权重衰减。
+        # 对于第二个分组，权重衰减系数是 0.0，表示这些参数不会应用权重衰减。
         optim_groups = [
             {
                 "params": [
@@ -486,9 +496,11 @@ class LightningTrainer(pl.LightningModule):
         ]
 
         # 创建AdamW优化器
+        # lr=self.lr：这是全局的学习率，适用于所有参数组。它确保了所有参数在训练过程中以相同的基本学习率进行更新
+        # weight_decay=self.weight_decay：这是全局的权重衰减系数。然而，由于 optim_groups 中已经为每个参数组指定了具体的 weight_decay，这个全局的 weight_decay 实际上会被覆盖
         optimizer = torch.optim.AdamW(optim_groups, lr=self.lr, weight_decay=self.weight_decay)
 
-        # 创建学习率调度器
+        # 创建学习率调度器 
         scheduler = WarmupCosLR(
             optimizer=optimizer,
             lr=self.lr,
@@ -497,6 +509,7 @@ class LightningTrainer(pl.LightningModule):
             warmup_epochs=self.warmup_epochs,
         )
 
+        # PyTorch Lightning 框架期望 configure_optimizers 返回的是一个优化器列表和/或调度器列表。因此不是return optimizer, scheduler
         return [optimizer], [scheduler]
 
     # def on_before_optimizer_step(self, optimizer) -> None:
