@@ -85,6 +85,7 @@ def run_simulation(
     if isinstance(planners, AbstractPlanner):
         planners = [planners]
 
+    # forward 主函数，是个nuplan库函数
     runners = build_simulations(
         cfg=cfg,
         callbacks=callbacks,

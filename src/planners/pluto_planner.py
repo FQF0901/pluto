@@ -172,6 +172,7 @@ class PlutoPlanner(AbstractPlanner):
     def _run_planning_once(self, current_input: PlannerInput):
         ego_state = current_input.history.ego_states[-1]
 
+        # planner_feature.data: current_state, agent, static_obj, map, ref_line, etc
         planner_feature = self._planner_feature_builder.get_features_from_simulation(
             current_input, self._initialization
         )

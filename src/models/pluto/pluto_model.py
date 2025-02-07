@@ -224,10 +224,10 @@ class PlanningModel(TorchModuleWrapper):
         # 2. 通过编码器块进行进一步处理
         for blk in self.encoder_blocks:
             x = blk(x, key_padding_mask=key_padding_mask, return_attn_weights=False)
-        x = self.norm(x)    # [4, 215, 128]
+        x = self.norm(x)    # [4, 215, 128]: [batch_size, n_agent+n_static_obj+n_polygon, dim_feature]
 
         # 3. 使用代理预测器对代理的未来位置进行预测
-        prediction = self.agent_predictor(x[:, 1:A])    # A=49, prediction:[4, 48, 80, 6]貌似[batch_size, n_agent-1, T_future, dim_mod]
+        prediction = self.agent_predictor(x[:, 1:A])    # A=49, prediction:[4, 48, 80, 6]貌似[batch_size, n_agent-1, T_future, 6_infos]
 
         # 4. 检查是否有可用的参考线
         ref_line_available = data["reference_line"]["position"].shape[1] > 0    # true
@@ -238,68 +238,74 @@ class PlanningModel(TorchModuleWrapper):
         else:
             trajectory, probability = None, None
 
-        # 5. 构建输出字典
+        # 5. 构建输出字典，这些全都是相对轨迹
         out = {
             "trajectory": trajectory,   # [4, 3, 12, 80, 6]
             "probability": probability,  # (bs, R, M): [4, 3, 12]
             "prediction": prediction,  # (bs, A-1, T, 2): [4, 48, 80, 6]
         }
 
-        # 如果使用隐藏层投影，则添加到输出字典中
+        # 如果使用隐藏层投影，则添加到输出字典中。貌似用在对比学习中
         if self.use_hidden_proj:
             out["hidden"] = self.hidden_proj(x[:, 0])
 
         # 如果使用无参考线的轨迹，则生成并添加到输出字典中
         if self.ref_free_traj:
-            ref_free_traj = self.ref_free_decoder(x[:, 0]).reshape(
-                bs, self.future_steps, 4
-            )
+            # x[:, 0] 提取了每个批次中第一个位置的特征（通常是自车或场景中的关键代理）的特征表示
+            # self.ref_free_decoder：这是一个多层感知机（MLP）模型，用于生成不依赖于参考线的未来轨迹预测
+            # reshape 操作，将 MLP 输出的扁平化张量重新组织成形状为 [batch_size, future_steps, 4] 的张量
+            ref_free_traj = self.ref_free_decoder(x[:, 0]).reshape(bs, self.future_steps, 4)
             out["ref_free_trajectory"] = ref_free_traj
 
-        # 如果不在训练模式下，则生成最终输出轨迹、预测和概率
+        # 6. 如果不在训练模式下，则生成最终输出轨迹、预测和概率
         if not self.training:   # train的时候为false
+            # 6.1 ref_traj
             if self.ref_free_traj:  # train的时候为false
-                ref_free_traj_angle = torch.arctan2(
-                    ref_free_traj[..., 3], ref_free_traj[..., 2]
-                )
-                ref_free_traj = torch.cat(
-                    [ref_free_traj[..., :2], ref_free_traj_angle.unsqueeze(-1)], dim=-1
-                )
+                ref_free_traj_angle = torch.arctan2(ref_free_traj[..., 3], ref_free_traj[..., 2])   # 使用 torch.arctan2 计算参考自由轨迹角度
+                ref_free_traj = torch.cat([ref_free_traj[..., :2], ref_free_traj_angle.unsqueeze(-1)], dim=-1)  # 将原始轨迹中的位置信息与计算得到的角度信息拼接在一起
                 out["output_ref_free_trajectory"] = ref_free_traj
 
+            # 6.2 绝对坐标的agent traj
             output_prediction = torch.cat(
                 [
+                    # prediction[..., :2]：这是模型预测的未来轨迹中每个时间步的位置偏移量（x 和 y 坐标）
+                    # agent_pos[:, 1:A, None]：这是当前代理（agent）的位置坐标。None 的作用是扩展维度以匹配 prediction 的形状
+                    # 将预测的未来位置偏移量与当前代理的位置相加，得到绝对位置坐标
                     prediction[..., :2] + agent_pos[:, 1:A, None],
-                    torch.atan2(prediction[..., 3], prediction[..., 2]).unsqueeze(-1)
-                    + agent_heading[:, 1:A, None, None],
-                    prediction[..., 4:6],
+                    # torch.atan2(prediction[..., 3], prediction[..., 2])：使用 arctan2 函数计算预测轨迹中每个时间步的方向角度。unsqueeze(-1)：扩展维度以匹配其他张量的形状
+                    # agent_heading[:, 1:A, None, None]：这是当前代理的航向角。同样通过 None 扩展维度以匹配形状
+                    # 将预测的方向角度与当前代理的航向角相加，得到绝对方向角度
+                    torch.atan2(prediction[..., 3], prediction[..., 2]).unsqueeze(-1) + agent_heading[:, 1:A, None, None],
+                    prediction[..., 4:6],   # 这部分直接取自 prediction 的剩余部分，通常包含其他特征（例如速度、加速度等），保持不变
                 ],
-                dim=-1,
-            )   # [4, 48, 80, 5]
+                dim=-1,)   # [4, 48, 80, 5]
             out["output_prediction"] = output_prediction
 
             if trajectory is not None:
-                r_padding_mask = ~data["reference_line"]["valid_mask"].any(-1)  # [4, 3]
-                probability.masked_fill_(r_padding_mask.unsqueeze(-1), -1e6)
+                # 6.3 处理参考线的有效性掩码，并对无效的参考线对应的概率进行填充，以确保在后续选择最佳轨迹时不会选择这些无效的参考线
+                # data["reference_line"]["valid_mask"]：这是一个布尔张量，形状为 [batch_size, num_reference_lines, future_steps]
+                # .any(-1)：对最后一个维度（即 future_steps）进行逻辑或操作。只要该维度上有一个元素为 True，结果就为 True， 生成一个形状为 [batch_size, num_reference_lines] 的张量
+                # ~：取反操作，最终得到的 r_padding_mask 是一个布尔张量，形状为 [batch_size, num_reference_lines]
+                r_padding_mask = ~data["reference_line"]["valid_mask"].any(-1)  # [4, 3]，infer时[1, 1]
+                # r_padding_mask.unsqueeze(-1)：扩展 r_padding_mask 的维度，使其形状变为 [batch_size, num_reference_lines, 1]，以便与 probability 张量的形状匹配
+                # probability.masked_fill_：这是一个原地操作，用于将 probability 中对应于无效参考线的位置填充为一个非常小的值（如 -1e6）。这样做的目的是确保在后续选择最佳轨迹时，这些无效的参考线不会被选中
+                probability.masked_fill_(r_padding_mask.unsqueeze(-1), -1e6)    # infer时[1, 1, 12]
 
-                angle = torch.atan2(trajectory[..., 3], trajectory[..., 2]) # [4, 3, 12, 80]
-                out_trajectory = torch.cat(
-                    [trajectory[..., :2], angle.unsqueeze(-1)], dim=-1
-                )   # [4, 3, 12, 80, 3]
+                # trajectory[..., 3] 和 trajectory[..., 2]：分别表示轨迹中每个时间步的速度或方向分量（通常是 x 和 y 方向的速度分量）
+                # torch.atan2(y, x)：这个函数返回的是从正 x 轴到点 (x, y) 的向量之间的角度，结果范围在 ([-π, π]) 之间。通过 atan2 计算出这些点的方向角度
+                angle = torch.atan2(trajectory[..., 3], trajectory[..., 2]) # [4, 3, 12, 80], infer时[1, 1, 12, 80]
+                # 沿最后一个维度（即特征维度）拼接位置坐标和角度信息
+                out_trajectory = torch.cat([trajectory[..., :2], angle.unsqueeze(-1)], dim=-1)   # [4, 3, 12, 80, 3], infer时[1, 1, 12, 80, 3]
 
-                bs, R, M, T, _ = out_trajectory.shape   # 4, 3, 12, 80
-                flattened_probability = probability.reshape(bs, R * M)  # [4, 36]
-                best_trajectory = out_trajectory.reshape(bs, R * M, T, -1)[
-                    torch.arange(bs), flattened_probability.argmax(-1)
-                ]   # [4, 80, 3]
+                bs, R, M, T, _ = out_trajectory.shape   # 4, 3, 12, 80, infer时[1, 1, 12, 80, 3]
+                flattened_probability = probability.reshape(bs, R * M)  # [4, 36], infer时[1, 12]
+                best_trajectory = out_trajectory.reshape(bs, R * M, T, -1)[torch.arange(bs), flattened_probability.argmax(-1)]   # [4, 80, 3], infer时[1, 80, 3]
 
-                out["output_trajectory"] = best_trajectory  # [4, 80, 3]
-                out["candidate_trajectories"] = out_trajectory  # [4, 3, 12, 80, 3]
+                out["output_trajectory"] = best_trajectory  # [4, 80, 3], infer时[1, 80, 3]
+                out["candidate_trajectories"] = out_trajectory  # [4, 3, 12, 80, 3], infer时[1, 1, 12, 80, 3]
             else:
                 out["output_trajectory"] = out["output_ref_free_trajectory"]
                 out["probability"] = torch.zeros(1, 0, 0)
-                out["candidate_trajectories"] = torch.zeros(
-                    1, 0, 0, self.future_steps, 3
-                )
+                out["candidate_trajectories"] = torch.zeros(1, 0, 0, self.future_steps, 3)
 
         return out

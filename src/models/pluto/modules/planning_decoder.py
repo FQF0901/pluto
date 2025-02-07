@@ -134,7 +134,7 @@ class PlanningDecoder(nn.Module):
         r_vector = data["reference_line"]["vector"] # [4, 3, 120, 2]
         r_orientation = data["reference_line"]["orientation"]   # [4, 3, 120]
         r_valid_mask = data["reference_line"]["valid_mask"] # [4, 3, 120]
-        r_key_padding_mask = ~r_valid_mask.any(-1)  # [4, 3]
+        r_key_padding_mask = ~r_valid_mask.any(-1)  # [4, 3]：在最后一个维度（通常对应序列长度）上进行逻辑或操作， 然后对上述结果取反
 
         r_feature = torch.cat(
             [
