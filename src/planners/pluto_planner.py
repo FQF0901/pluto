@@ -173,18 +173,21 @@ class PlutoPlanner(AbstractPlanner):
         ego_state = current_input.history.ego_states[-1]
 
         # planner_feature.data: current_state, agent, static_obj, map, ref_line, etc
-        planner_feature = self._planner_feature_builder.get_features_from_simulation(
-            current_input, self._initialization
-        )
+        planner_feature = self._planner_feature_builder.get_features_from_simulation(current_input, self._initialization)
 
-        planner_feature_torch = planner_feature.collate(
-            [planner_feature.to_feature_tensor()]
-        ).to_device(self.device)
+        planner_feature_torch = planner_feature.collate([planner_feature.to_feature_tensor()]).to_device(self.device)
 
+        # out.trajectory: net.forward 的 ego_traj, [1, 1, 12, 80, 6_infos]，6_infos应该是 2 * [loc, yaw, vel]
+        # out.probability: net.forward 的 ego_probs, [1, 1, 12]
+        # out.prediction: net.forward 的 agents_traj, 这里都是相对ego的数据, [1, 18, 80, 6_infos]，6_infos应该是 2 * [loc, yaw, vel]
+        # out.hidden: 貌似用于对比学习, [1, 128]
+        # out.ref_free_trajectory: net.forward 的 ref_free_ego_traj, [1, 80, 4]
+        # out.output_ref_free_trajectory: 在out.ref_free_trajectory后处理得到的[1, 80, 3_infos]，3_infos应该是x, y, yaw
+        # out.output_prediction: 在out.prediction计算绝对位置的agents数据， [1, 18, 80, 5_infos], 5_infos应该是x, y, yaw, v, a
+        # out.output_trajectory: best_trajectory的数据，[1, 80, 3_infos], 3_infos应该是x, y, yaw
+        # out.candidate_trajectories: 自车12个模态的轨迹信息， [1, 1, 12, 80, 3_infos], 3_infos应该是x,y yaw
         out = self._planner.forward(planner_feature_torch.data)
-        candidate_trajectories = (
-            out["candidate_trajectories"][0].cpu().numpy().astype(np.float64)
-        )
+        candidate_trajectories = (out["candidate_trajectories"][0].cpu().numpy().astype(np.float64))
         probability = out["probability"][0].cpu().numpy()
 
         if self._use_prediction:
@@ -194,35 +197,28 @@ class PlutoPlanner(AbstractPlanner):
 
         ref_free_trajectory = (
             (out["output_ref_free_trajectory"][0].cpu().numpy().astype(np.float64))
-            if "output_ref_free_trajectory" in out
-            else None
+            if "output_ref_free_trajectory" in out else None
         )
 
         candidate_trajectories, learning_based_score = self._trim_candidates(
-            candidate_trajectories,
-            probability,
+            candidate_trajectories, # ego 12个模态的traj
+            probability,    # ego 12个 probs
             current_input.history.ego_states[-1],
             ref_free_trajectory,
         )
 
         rule_based_scores = self._trajectory_evaluator.evaluate(
-            candidate_trajectories=candidate_trajectories,
+            candidate_trajectories=candidate_trajectories,  # ego 12个模态的traj
             init_ego_state=current_input.history.ego_states[-1],
             detections=current_input.history.observations[-1],
             traffic_light_data=current_input.traffic_light_data,
-            agents_info=self._get_agent_info(
-                planner_feature.data, predictions, ego_state
-            ),
+            agents_info=self._get_agent_info(planner_feature.data, predictions, ego_state),
             route_lane_dict=self._scenario_manager.get_route_lane_dicts(),
             drivable_area_map=self._scenario_manager.drivable_area_map,
-            baseline_path=self._get_ego_baseline_path(
-                self._scenario_manager.get_cached_reference_lines(), ego_state
-            ),
+            baseline_path=self._get_ego_baseline_path(self._scenario_manager.get_cached_reference_lines(), ego_state),
         )
 
-        final_scores = (
-            rule_based_scores + self._learning_based_score_weight * learning_based_score
-        )
+        final_scores = (rule_based_scores + self._learning_based_score_weight * learning_based_score)
 
         best_candidate_idx = final_scores.argmax()
 
@@ -273,19 +269,30 @@ class PlutoPlanner(AbstractPlanner):
         ref_free_trajectory: np.ndarray = None,
     ) -> npt.NDArray[np.float32]:
         """
-        candidate_trajectories: (n_ref, n_mode, 80, 3)
-        probability: (n_ref, n_mode)
+        筛选并转换候选轨迹。
+
+        参数:
+        candidate_trajectories: 候选轨迹数组，形状为 (n_ref, n_mode, 80, 3)。
+        probability: 候选轨迹对应的概率数组，形状为 (n_ref, n_mode)。
+        ego_state: 自车状态。
+        ref_free_trajectory: 参考自由轨迹数组，形状为 (80, 3)。
+
+        返回:
+        返回筛选并转换后的候选轨迹及其对应的概率。
         """
+        # 如果候选轨迹的形状为4维，则重新调整形状
         if len(candidate_trajectories.shape) == 4:
             n_ref, n_mode, T, C = candidate_trajectories.shape
             candidate_trajectories = candidate_trajectories.reshape(-1, T, C)
             probability = probability.reshape(-1)
 
+        # 根据概率对候选轨迹进行排序
         sorted_idx = np.argsort(-probability)
         sorted_candidate_trajectories = candidate_trajectories[sorted_idx][: self._topk]
         sorted_probability = probability[sorted_idx][: self._topk]
         sorted_probability = softmax(sorted_probability)
 
+        # 如果提供了参考自由轨迹，则将其添加到候选轨迹中
         if ref_free_trajectory is not None:
             sorted_candidate_trajectories = np.concatenate(
                 [sorted_candidate_trajectories, ref_free_trajectory[None, ...]],
@@ -293,7 +300,7 @@ class PlutoPlanner(AbstractPlanner):
             )
             sorted_probability = np.concatenate([sorted_probability, [0.25]], axis=0)
 
-        # to global
+        # 将候选轨迹从局部坐标系转换到全局坐标系
         origin = ego_state.rear_axle.array
         angle = ego_state.rear_axle.heading
         rot_mat = np.array(
@@ -304,6 +311,7 @@ class PlutoPlanner(AbstractPlanner):
         )
         sorted_candidate_trajectories[..., 2] += angle
 
+        # 在候选轨迹的开头添加起始位置
         sorted_candidate_trajectories = np.concatenate(
             [sorted_candidate_trajectories[..., 0:1, :], sorted_candidate_trajectories],
             axis=-2,
