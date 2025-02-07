@@ -179,4 +179,4 @@ class PlanningDecoder(nn.Module):
 
         traj = torch.cat([loc, yaw, vel], dim=-1)   # [4, 3, 12, 80, 6]
 
-        return traj, pi
+        return traj, pi # 这个pi用来算分类loss，并用来选中best_mode

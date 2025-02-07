@@ -188,7 +188,7 @@ class PlutoPlanner(AbstractPlanner):
         # out.candidate_trajectories: 自车12个模态的轨迹信息， [1, 1, 12, 80, 3_infos], 3_infos应该是x,y yaw
         out = self._planner.forward(planner_feature_torch.data)
         candidate_trajectories = (out["candidate_trajectories"][0].cpu().numpy().astype(np.float64))
-        probability = out["probability"][0].cpu().numpy()
+        probability = out["probability"][0].cpu().numpy()   # 这个probability用来算分类loss，并用来选中best_mode
 
         if self._use_prediction:
             predictions = out["output_prediction"][0].cpu().numpy()
@@ -201,10 +201,10 @@ class PlutoPlanner(AbstractPlanner):
         )
 
         candidate_trajectories, learning_based_score = self._trim_candidates(
-            candidate_trajectories, # ego 12个模态的traj
-            probability,    # ego 12个 probs
+            candidate_trajectories, # ego 12个模态的traj: [1, 12, 80, 3_infos], 3_infos应该是x,y yaw
+            probability,    # ego 12个 probs:[1, 1, 12]。这个probability用来算分类loss，并用来选中best_mode
             current_input.history.ego_states[-1],
-            ref_free_trajectory,
+            ref_free_trajectory,    # array: 80个element:[80, 3]，3_infos应该是x, y, yaw
         )
 
         rule_based_scores = self._trajectory_evaluator.evaluate(
@@ -272,17 +272,17 @@ class PlutoPlanner(AbstractPlanner):
         筛选并转换候选轨迹。
 
         参数:
-        candidate_trajectories: 候选轨迹数组，形状为 (n_ref, n_mode, 80, 3)。
-        probability: 候选轨迹对应的概率数组，形状为 (n_ref, n_mode)。
+        candidate_trajectories: 候选轨迹数组，形状为 (n_ref, n_mode, 80, 3)。[1, 12, 80, 3_infos], 3_infos应该是x,y yaw
+        probability: 候选轨迹对应的概率数组，形状为 (n_ref, n_mode)。ego 12个 probs:[1, 1, 12]
         ego_state: 自车状态。
-        ref_free_trajectory: 参考自由轨迹数组，形状为 (80, 3)。
+        ref_free_trajectory: 参考自由轨迹数组，形状为 (80, 3), 3_infos应该是x, y, yaw
 
         返回:
         返回筛选并转换后的候选轨迹及其对应的概率。
         """
         # 如果候选轨迹的形状为4维，则重新调整形状
-        if len(candidate_trajectories.shape) == 4:
-            n_ref, n_mode, T, C = candidate_trajectories.shape
+        if len(candidate_trajectories.shape) == 4:  # 4个维度
+            n_ref, n_mode, T, C = candidate_trajectories.shape  # [1, 12, 80, 3_infos], 3_infos应该是x,y yaw
             candidate_trajectories = candidate_trajectories.reshape(-1, T, C)
             probability = probability.reshape(-1)
 
@@ -294,28 +294,18 @@ class PlutoPlanner(AbstractPlanner):
 
         # 如果提供了参考自由轨迹，则将其添加到候选轨迹中
         if ref_free_trajectory is not None:
-            sorted_candidate_trajectories = np.concatenate(
-                [sorted_candidate_trajectories, ref_free_trajectory[None, ...]],
-                axis=0,
-            )
+            sorted_candidate_trajectories = np.concatenate([sorted_candidate_trajectories, ref_free_trajectory[None, ...]], axis=0,)
             sorted_probability = np.concatenate([sorted_probability, [0.25]], axis=0)
 
         # 将候选轨迹从局部坐标系转换到全局坐标系
         origin = ego_state.rear_axle.array
         angle = ego_state.rear_axle.heading
-        rot_mat = np.array(
-            [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
-        )
-        sorted_candidate_trajectories[..., :2] = (
-            np.matmul(sorted_candidate_trajectories[..., :2], rot_mat) + origin
-        )
+        rot_mat = np.array([[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]])
+        sorted_candidate_trajectories[..., :2] = (np.matmul(sorted_candidate_trajectories[..., :2], rot_mat) + origin)
         sorted_candidate_trajectories[..., 2] += angle
 
         # 在候选轨迹的开头添加起始位置
-        sorted_candidate_trajectories = np.concatenate(
-            [sorted_candidate_trajectories[..., 0:1, :], sorted_candidate_trajectories],
-            axis=-2,
-        )
+        sorted_candidate_trajectories = np.concatenate([sorted_candidate_trajectories[..., 0:1, :], sorted_candidate_trajectories], axis=-2,)
 
         return sorted_candidate_trajectories, sorted_probability
 

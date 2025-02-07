@@ -96,6 +96,23 @@ class TrajectoryEvaluator:
         drivable_area_map: Optional[OccupancyMap],
         baseline_path: Optional[LineString],
     ):
+        """
+        评估给定的候选轨迹是否符合各种安全和舒适的标准。
+
+        参数:
+        - candidate_trajectories: 候选轨迹的数组。
+        - init_ego_state: 自车的初始状态。
+        - detections: 检测到的周围环境信息。
+        - traffic_light_data: 交通灯状态数据列表。
+        - agents_info: 其他交通参与者的相关信息字典。
+        - route_lane_dict: 路线车道信息字典。
+        - drivable_area_map: 可行驶区域地图（可选）。
+        - baseline_path: 基准路径（可选）。
+        
+        返回:
+        - 评估得分的聚合结果。
+        """
+        # 重置评估器状态，准备新一轮的评估
         self._reset(
             candidate_trajectories=candidate_trajectories,
             init_ego_state=init_ego_state,
@@ -107,17 +124,26 @@ class TrajectoryEvaluator:
             baseline_path=baseline_path,
         )
 
+        # 更新自车在所有候选轨迹下的足迹
         self._update_ego_footprints()
 
+        # 评估无责任碰撞
         self._evaluate_no_at_fault_collisions()
+        # 评估是否遵守可行驶区域
         self._evaluate_drivable_area_compliance()
+        # 评估是否遵守行驶方向
         self._evaluate_driving_direction_compliance()
 
+        # 评估时间到碰撞的性能
         self._evaluate_time_to_collision()
+        # 评估是否遵守速度限制
         self._evaluate_speed_limit_compliance()
+        # 评估行驶进度
         self._evaluate_progress()
+        # 评估驾驶舒适性
         self._evaluate_is_comfortable()
 
+        # 返回综合评估分数
         return self._aggregate_scores()
 
     def _reset(

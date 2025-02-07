@@ -232,7 +232,7 @@ class PlanningModel(TorchModuleWrapper):
         # 4. 检查是否有可用的参考线
         ref_line_available = data["reference_line"]["position"].shape[1] > 0    # true
 
-        # 如果有可用的参考线，则使用规划解码器生成轨迹和概率
+        # 如果有可用的参考线，则使用规划解码器生成轨迹和概率。这个probability用来算分类loss，并用来选中best_mode
         if ref_line_available:
             trajectory, probability = self.planning_decoder(data, {"enc_emb": x, "enc_key_padding_mask": key_padding_mask}) # [4, 3, 12, 80, 6], [4, 3, 12]
         else:
@@ -241,7 +241,7 @@ class PlanningModel(TorchModuleWrapper):
         # 5. 构建输出字典，这些全都是相对轨迹
         out = {
             "trajectory": trajectory,   # [4, 3, 12, 80, 6], infer时[1, 1, 12, 80, 6_infos]
-            "probability": probability,  # (bs, R, M): [4, 3, 12], infer时[1, 1, 12]
+            "probability": probability,  # (bs, R, M): [4, 3, 12], infer时[1, 1, 12]。这个probability用来算分类loss，并用来选中best_mode
             "prediction": prediction,  # (bs, A-1, T, 2): [4, 48, 80, 6], infer时[1, 18, 80, 6_infos]
         }
 
